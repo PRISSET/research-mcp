@@ -1,0 +1,189 @@
+# Retrieval eval: question -> the paper that answers it (arXiv ids verified against titles 2026-10-13).
+# Run: uv run python eval/run_search_eval.py
+questions:
+- q: 8-bit quantized attention that is a plug-and-play replacement for FlashAttention
+  arxiv: '2410.02367'
+  lang: en
+- q: 4-bit INT4 quantization of Q and K in attention with outlier smoothing
+  arxiv: '2411.10958'
+  lang: en
+- q: spatial and temporal attention heads sparsity to accelerate video diffusion transformers
+  arxiv: '2502.01776'
+  lang: en
+- q: training-free caching that decides when to reuse model outputs from timestep embedding differences
+  arxiv: '2411.19108'
+  lang: en
+- q: broadcasting attention outputs across diffusion steps for real-time video generation
+  arxiv: '2408.12588'
+  lang: en
+- q: quantization of diffusion transformers for video generation with mixed precision
+  arxiv: '2406.02540'
+  lang: en
+- q: low-rank adaptation of large language models freezing pretrained weights
+  arxiv: '2106.09685'
+  lang: en
+- q: fine-tuning text-to-image models on a few images of a subject with a rare token identifier
+  arxiv: '2208.12242'
+  lang: en
+- q: diffusion in the latent space of a pretrained autoencoder for high-resolution image synthesis
+  arxiv: '2112.10752'
+  lang: en
+- q: replacing U-Net with transformer backbone operating on latent patches
+  arxiv: '2212.09748'
+  lang: en
+- q: rectified flow learning straight paths between noise and data
+  arxiv: '2209.03003'
+  lang: en
+- q: simulation-free training of continuous normalizing flows by regressing vector fields
+  arxiv: '2210.02747'
+  lang: en
+- q: expert transformer with 3D causal VAE for text-to-video
+  arxiv: '2408.06072'
+  lang: en
+- q: open-source 13B video generation foundation model
+  arxiv: '2412.03603'
+  lang: en
+- q: open large-scale video generative models with Wan-VAE
+  arxiv: '2503.20314'
+  lang: en
+- q: tile-based sliding window attention for fast video generation
+  arxiv: '2502.04507'
+  lang: en
+- q: distribution matching distillation into a one-step generator
+  arxiv: '2311.18828'
+  lang: en
+- q: DMD2 removing regression loss and adding GAN loss
+  arxiv: '2405.14867'
+  lang: en
+- q: distilling bidirectional video diffusion into an autoregressive causal student
+  arxiv: '2412.07772'
+  lang: en
+- q: few-step inference by consistency distillation in latent space
+  arxiv: '2310.04378'
+  lang: en
+- q: one-step generation by mapping any point on the ODE trajectory to its origin
+  arxiv: '2303.01469'
+  lang: en
+- q: 4-bit weights and activations with a low-rank branch absorbing outliers
+  arxiv: '2411.05007'
+  lang: en
+- q: training-free cache acceleration for video diffusion with CFG cache
+  arxiv: '2410.19355'
+  lang: en
+- q: comprehensive benchmark suite for video generative models with 16 dimensions
+  arxiv: '2311.17982'
+  lang: en
+- q: real-time latent video diffusion with high compression VAE
+  arxiv: '2501.00103'
+  lang: en
+- q: 30B text-to-video model with deep compression video VAE
+  arxiv: '2502.10248'
+  lang: en
+- q: infinite-length film generation with diffusion forcing
+  arxiv: '2504.13074'
+  lang: en
+- q: multi-shot video generation model with fast inference
+  arxiv: '2506.09113'
+  lang: en
+- q: cast of media foundation models for video and audio generation
+  arxiv: '2410.13720'
+  lang: en
+- q: image prompt adapter with decoupled cross-attention
+  arxiv: '2308.06721'
+  lang: en
+- q: weight-decomposed low-rank adaptation magnitude and direction
+  arxiv: '2402.09353'
+  lang: en
+- q: plug-and-play motion module for personalized text-to-image models
+  arxiv: '2307.04725'
+  lang: en
+- q: scaling latent video diffusion models to large datasets with data curation
+  arxiv: '2311.15127'
+  lang: en
+- q: training autoregressive video diffusion on its own rollouts to close exposure bias
+  arxiv: '2506.08009'
+  lang: en
+- q: displaced patch pipeline parallelism for diffusion transformer inference
+  arxiv: '2405.14430'
+  lang: en
+- q: asynchrony and low-precision attention on Hopper GPUs
+  arxiv: '2407.08608'
+  lang: en
+- q: extrapolating video length by adjusting the intrinsic frequency in RoPE
+  arxiv: '2502.15894'
+  lang: en
+- q: next-frame prediction with compressed frame context for long video
+  arxiv: '2504.12626'
+  lang: en
+- q: adding spatial conditioning controls to text-to-image diffusion models
+  arxiv: '2302.05543'
+  lang: en
+- q: better parallelism and work partitioning for attention
+  arxiv: '2307.08691'
+  lang: en
+- q: training-free sparse attention that accelerates any model inference
+  arxiv: '2502.18137'
+  lang: en
+- q: masked guidance for any-reference video generation with subject disentanglement
+  arxiv: '2505.23742'
+  lang: en
+- q: 8-битное квантование внимания как замена FlashAttention без потери качества
+  arxiv: '2410.02367'
+  lang: ru
+- q: разреженность пространственных и временных голов внимания для ускорения видео-диффузии
+  arxiv: '2502.01776'
+  lang: ru
+- q: 'кэширование без обучения: когда переиспользовать выход модели по разнице timestep-эмбеддингов'
+  arxiv: '2411.19108'
+  lang: ru
+- q: квантование диффузионных трансформеров для генерации видео со смешанной точностью
+  arxiv: '2406.02540'
+  lang: ru
+- q: низкоранговая адаптация больших моделей с замороженными весами
+  arxiv: '2106.09685'
+  lang: ru
+- q: дообучение text-to-image на нескольких фото субъекта с редким токеном
+  arxiv: '2208.12242'
+  lang: ru
+- q: 'rectified flow: прямые траектории между шумом и данными'
+  arxiv: '2209.03003'
+  lang: ru
+- q: скользящее окно по тайлам в механизме внимания для быстрой генерации видео
+  arxiv: '2502.04507'
+  lang: ru
+- q: дистилляция в одношаговый генератор через сопоставление распределений
+  arxiv: '2311.18828'
+  lang: ru
+- q: дистилляция двунаправленной видео-диффузии в авторегрессионного каузального ученика
+  arxiv: '2412.07772'
+  lang: ru
+- q: 4-битные веса и активации с низкоранговой веткой для выбросов
+  arxiv: '2411.05007'
+  lang: ru
+- q: бенчмарк для оценки видеогенерации по 16 измерениям
+  arxiv: '2311.17982'
+  lang: ru
+- q: генерация фильмов бесконечной длины с diffusion forcing
+  arxiv: '2504.13074'
+  lang: ru
+- q: адаптер для промпта-картинки с раздельным кросс-вниманием
+  arxiv: '2308.06721'
+  lang: ru
+- q: LoRA с разложением весов на величину и направление
+  arxiv: '2402.09353'
+  lang: ru
+- q: модуль движения для персонализированных text-to-image моделей
+  arxiv: '2307.04725'
+  lang: ru
+- q: увеличение длины видео через изменение собственной частоты RoPE
+  arxiv: '2502.15894'
+  lang: ru
+- q: предсказание следующего кадра с упаковкой контекста для длинного видео
+  arxiv: '2504.12626'
+  lang: ru
+- q: обучение авторегрессионной видео-диффузии на собственных прогонах против exposure bias
+  arxiv: '2506.08009'
+  lang: ru
+- q: асинхронное внимание в низкой точности на GPU Hopper
+  arxiv: '2407.08608'
+  lang: ru

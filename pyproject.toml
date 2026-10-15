@@ -1,0 +1,57 @@
+[project]
+name = "research-mcp"
+version = "0.2.0"
+description = "Research MCP: live paper search, full texts, evidence grades and a shared RESEARCH.md notebook"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "httpx>=0.27",
+    "pydantic>=2.7",
+    "pyyaml>=6.0",
+    "typer>=0.12",
+    "rich>=13.7",
+    "mcp[cli]>=2.3,<3",
+    "jinja2>=3.1",
+    "trafilatura>=2.0",
+]
+
+[project.scripts]
+kb = "kb.cli:app"
+research-mcp = "kb.mcp.server:main"
+
+[project.optional-dependencies]
+fulltext = [
+    "numpy>=2.5.4",
+    "pymupdf>=1.28.2",
+    "selectolax>=1.0.0",
+]
+embed = [
+    "sentence-transformers>=3.3",
+    "torch>=2.5",
+]
+
+# The server runs its embedding / reranking models on the CPU, so it needs no CUDA build of torch
+# (~200 MB instead of ~2.5 GB). This affects only this project's own environment.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform != 'darwin'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/kb"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "ruff>=0.17.0",
+]
+
+[tool.pytest.ini_options]
+markers = ["slow: end-to-end tests that start the MCP server", "network: tests that call live APIs"]
