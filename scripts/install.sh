@@ -1,27 +1,33 @@
 #!/usr/bin/env bash
-# One-command install of the research MCP server and its registration in Claude Code and Codex CLI.
+# One-command install of the research MCP server and its registration in Claude Code or Codex CLI.
 #
-#   curl -fsSL https://raw.githubusercontent.com/PRISSET/research-mcp/main/scripts/install.sh | bash
-#   scripts/install.sh [--dir PATH] [--notebook FILE] [--lang ru|en] [--embed|--no-embed] [--agent-rules] [--no-register]
+#   curl -fsSL https://raw.githubusercontent.com/PRISSET/research-mcp/main/scripts/install.sh | bash -s -- --agent claude
+#   scripts/install.sh [--agent claude|codex|all] [--dir PATH] [--notebook FILE] [--lang ru|en] [--embed|--no-embed]
+#                      [--agent-rules] [--no-register]
 #
+#   --agent NAME     which agent to register in (and write rules for): claude, codex or all. Default: the agent
+#                    running this script (Claude Code sets CLAUDECODE, Codex CODEX_THREAD_ID / CODEX_SANDBOX*);
+#                    run by hand in a terminal, every installed agent
 #   --dir PATH       where to clone (default: this checkout, or ~/research-mcp)
 #   --notebook FILE  the shared research notebook (default: ~/research/RESEARCH.md)
 #   --lang ru|en     language of the notebook headings (default: ru)
 #   --embed          semantic search: a static embedding model (model2vec, no torch, ~130 MB RAM) (default)
 #   --no-embed       skip it: keyword search only
 # The server runs on the CPU (registered with CUDA_VISIBLE_DEVICES=""): the GPU stays free for your own work.
-#   --agent-rules    add a short rules block to ~/.claude/CLAUDE.md and ~/.codex/AGENTS.md so agents in every project
-#                    look models / versions / errors up with this MCP (marked block; remove: --remove-agent-rules)
+#   --agent-rules    add a short rules block to the agent's global instructions (~/.claude/CLAUDE.md for Claude Code,
+#                    ~/.codex/AGENTS.md for Codex) so it looks models / versions / errors up with this MCP in every
+#                    project (marked block; remove: --remove-agent-rules)
 #   --no-register    do not touch Claude Code / Codex CLI configs
 # Safe to re-run: pulls updates, re-syncs, re-registers. No API keys needed.
 set -euo pipefail
 
 REPO_URL="https://github.com/PRISSET/research-mcp.git"
 NAME="research"
-DIR="" NOTEBOOK="$HOME/research/RESEARCH.md" LANG_NB="ru" EMBED=1 REGISTER=1 RULES=keep
+DIR="" NOTEBOOK="$HOME/research/RESEARCH.md" LANG_NB="ru" EMBED=1 REGISTER=1 RULES=keep AGENT=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
+    --agent) AGENT="$2"; shift ;;
     --dir) DIR="$2"; shift ;;
     --notebook) NOTEBOOK="$2"; shift ;;
     --lang) LANG_NB="$2"; shift ;;
@@ -30,7 +36,7 @@ while [ $# -gt 0 ]; do
     --no-register) REGISTER=0 ;;
     --agent-rules) RULES=install ;;
     --remove-agent-rules) RULES=remove ;;
-    -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
   shift
@@ -38,6 +44,19 @@ done
 
 say()  { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 warn() { printf '\033[33m!! %s\033[0m\n' "$*" >&2; }
+
+# --- which agent: the one running this script, unless --agent says otherwise
+if [ -z "$AGENT" ]; then
+  if [ -n "${CLAUDECODE:-}" ]; then AGENT=claude
+  elif [ -n "${CODEX_THREAD_ID:-}${CODEX_SANDBOX:-}${CODEX_SANDBOX_NETWORK_DISABLED:-}" ]; then AGENT=codex
+  else AGENT=all
+  fi
+fi
+case "$AGENT" in
+  claude|codex|all) ;;
+  *) echo "--agent must be claude, codex or all (got: $AGENT)" >&2; exit 2 ;;
+esac
+want() { [ "$AGENT" = all ] || [ "$AGENT" = "$1" ]; }
 
 # --- where the checkout lives
 if [ -z "$DIR" ]; then
@@ -94,13 +113,13 @@ if [ -n "$tools" ]; then echo "OK: $tools tools"; else warn "the server did not 
 registered=()
 envs=(RESEARCH_NOTEBOOK="$NOTEBOOK" RESEARCH_LANG="$LANG_NB" CUDA_VISIBLE_DEVICES=)
 if [ "$REGISTER" = 1 ]; then
-  if command -v claude >/dev/null; then
+  if want claude && command -v claude >/dev/null; then
     say "Registering in Claude Code (user scope)"
     for old in "$NAME" h3-kb; do claude mcp remove "$old" -s user >/dev/null 2>&1 || true; done
     claude mcp add "$NAME" -s user -e "${envs[0]}" -e "${envs[1]}" -e "${envs[2]}" -- uv --directory "$DIR" run research-mcp \
       && registered+=("Claude Code")
   fi
-  if command -v codex >/dev/null; then
+  if want codex && command -v codex >/dev/null; then
     say "Registering in Codex CLI"
     codex mcp remove h3-kb >/dev/null 2>&1 || true
     codex mcp add "$NAME" --env "${envs[0]}" --env "${envs[1]}" --env "${envs[2]}" -- uv --directory "$DIR" run research-mcp \
@@ -118,12 +137,12 @@ fi
 if [ "$RULES" != keep ]; then
   say "Agent rules: $RULES"
   targets=()
-  command -v claude >/dev/null && targets+=("$HOME/.claude/CLAUDE.md")
-  command -v codex >/dev/null && targets+=("${CODEX_HOME:-$HOME/.codex}/AGENTS.md")
+  if want claude && command -v claude >/dev/null; then targets+=("$HOME/.claude/CLAUDE.md"); fi
+  if want codex && command -v codex >/dev/null; then targets+=("${CODEX_HOME:-$HOME/.codex}/AGENTS.md"); fi
   if [ ${#targets[@]} -gt 0 ]; then
     uv run python -m kb.rules "$RULES" "${targets[@]}"
   else
-    warn "neither claude nor codex found: no rules written"
+    warn "no agent found for --agent $AGENT: no rules written"
   fi
 fi
 
@@ -134,6 +153,7 @@ if [ ${#registered[@]} -gt 0 ]; then
   echo "Registered as '$NAME' in: ${registered[*]}. Restart the agent to load the tools."
   echo "Then ask it to research something, or in Claude Code type: /mcp__${NAME}__research <topic>"
 else
+  [ "$REGISTER" = 1 ] && warn "agent '$AGENT' not found on PATH"
   echo "Not registered anywhere. Add manually: <agent> mcp add $NAME -- uv --directory \"$DIR\" run research-mcp"
 fi
 exit 0

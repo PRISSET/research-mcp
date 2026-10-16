@@ -24,22 +24,30 @@ MCP-сервер для ML. Подключается к Claude Code, Codex CLI �
 
 ## Установка
 
-Отправьте агенту (Claude Code или Codex):
+Отправьте агенту.
+
+Claude Code:
 
 ```text
 Установи MCP-сервер research: выполни
-curl -fsSL https://raw.githubusercontent.com/PRISSET/research-mcp/main/scripts/install.sh | bash -s -- --agent-rules
+curl -fsSL https://raw.githubusercontent.com/PRISSET/research-mcp/main/scripts/install.sh | bash -s -- --agent claude --agent-rules
 и скажи, чем закончилось.
 ```
 
-Скрипт клонирует репозиторий в `~/research-mcp`, ставит uv и зависимости и регистрирует сервер в Claude Code и
-Codex. Флаг `--agent-rules` добавляет в `~/.claude/CLAUDE.md` и `~/.codex/AGENTS.md` короткое правило: проверять
-модели и версии через этот сервер. После установки перезапустите агента.
+Codex:
 
-Сервер работает на процессоре, видеокарта остаётся вам. При каждом запуске он сам обновляется с GitHub, если вы не
-меняли файлы в папке установки.
+```text
+Установи MCP-сервер research: выполни
+curl -fsSL https://raw.githubusercontent.com/PRISSET/research-mcp/main/scripts/install.sh | bash -s -- --agent codex --agent-rules
+и скажи, чем закончилось.
+```
 
-Флаги установщика: `--notebook FILE`, `--lang ru|en`, `--no-embed` (только поиск по словам), `--dir PATH`,
+Скрипт клонирует репозиторий в `~/research-mcp`, ставит uv и зависимости и регистрирует сервер только в том
+агенте, для которого вы его ставите. Флаг `--agent-rules` добавляет в его глобальные инструкции
+(`~/.claude/CLAUDE.md` для Claude Code, `~/.codex/AGENTS.md` для Codex) короткое правило: проверять модели и
+версии через этот сервер. После установки перезапустите агента. Нужны оба агента сразу — `--agent all`.
+
+Флаги установщика: `--agent claude|codex|all`, `--notebook FILE`, `--lang ru|en`, `--no-embed` (только поиск по словам), `--dir PATH`,
 `--no-register`, `--remove-agent-rules`.
 
 ## Примеры запросов
