@@ -24,10 +24,11 @@ log = logging.getLogger(__name__)
 ROOT = Path(__file__).resolve().parents[2]
 FETCH_TIMEOUT = float(os.environ.get("KB_UPDATE_TIMEOUT", "8"))
 DEP_FILES = ("pyproject.toml", "uv.lock")
-# The published history was squashed on 2026-10-15. Installs still on one of these commits are moved to the new
-# history (only when they have no local changes); anything else that is not an ancestor counts as the user's own work.
+# The published history was rewritten on 2026-10-15 (squash) and 2026-10-16 (commit messages). Installs still on
+# one of these commits are moved to the new history (only when they have no local changes); anything else that is
+# not an ancestor counts as the user's own work.
 REWRITTEN = {"726f6e4", "ae887a6", "bb4a69e", "8ee6676", "8292257", "e66bbaa", "682d1c4", "dbb7e9d", "08d1e73",
-             "02e864f", "6a20dbe"}
+             "02e864f", "6a20dbe", "e17fe76", "e1bdafb"}
 
 
 def _git(*args: str, timeout: float = 15) -> str:
