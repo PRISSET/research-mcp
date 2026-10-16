@@ -120,7 +120,7 @@ def _baseline_citers(name: str, year_from: int, limit: int = 100) -> list[Paper]
 
 
 _VEC: dict[str, Any] = {}     # title -> vector, per server process: repeated research does not re-embed
-SEMANTIC_MAX = 160            # candidates embedded per call (~0.05 s each on the CPU)
+SEMANTIC_MAX = 160            # candidates embedded per call (a static model embeds them in milliseconds)
 
 
 def _words(text: str) -> set[str]:
@@ -131,20 +131,17 @@ def _semantic(goal: str, papers: list[Paper]) -> list[float]:
     try:
         import numpy as np
 
-        from kb.process.embed import encode_docs, encode_query, model
+        from kb.process.embed import available, encode_docs, encode_query
 
+        if not available():
+            raise RuntimeError("model2vec not installed")
         q = encode_query(goal).astype(np.float32)
         todo = [p for p in papers if p.title not in _VEC]
-        if todo:
-            m = model()
-            old, m.max_seq_length = m.max_seq_length, 160   # title + first sentences carry the method
-            try:
-                vecs = encode_docs([f"{p.title}. {p.abstract[:500]}" for p in todo], batch_size=32)
-            finally:
-                m.max_seq_length = old
+        if todo:   # title + first sentences carry the method
+            vecs = encode_docs([f"{p.title}. {p.abstract[:500]}" for p in todo])
             _VEC.update({p.title: v.astype(np.float32) for p, v in zip(todo, vecs, strict=True)})
         return [float(_VEC[p.title] @ q) for p in papers]
-    except Exception as e:   # no torch: fall back to word overlap
+    except Exception as e:   # no embedding model: fall back to word overlap
         log.info("semantic ranking unavailable: %s", e)
         words = {w for w in re.findall(r"\w{4,}", goal.lower())}
         return [len(words & set(re.findall(r"\w{4,}", f"{p.title} {p.abstract}".lower()))) / max(1, len(words))
@@ -231,7 +228,7 @@ def find_methods(db: Database, goal: str, queries: list[str] | None = None, base
         cands = cands[:SEMANTIC_MAX]
     if not cands:
         return {"goal": goal, "queries": qs, "sources": status, "results": [],
-                "next": "nothing found: rephrase (other terms, method family names) or use web_search"}
+                "next": "nothing found: rephrase (other terms, method family names) or research_sweep(platforms=['web'])"}
 
     sims = _semantic(goal + " " + " ".join(queries or []), [p for _, p in cands])
     ranked = []
@@ -255,7 +252,7 @@ def find_methods(db: Database, goal: str, queries: list[str] | None = None, base
     db.commit()
     return {
         "goal": goal, "queries": qs, "candidates_ranked": len(ranked), "sources": status, "results": out,
-        "next": ("These are claims from abstracts. For the top 3-5: fetch_fulltext and find_paper_numbers to get the "
+        "next": ("These are claims from abstracts. For the top 3-5: fetch(paper_ids=…) and evidence(paper_id=…) to get the "
                  "measured gain with its conditions (model, steps, metric) and the extra cost; github_search the title "
                  "for code; check it applies to the user's setup. Report only methods with a measured gain; say "
                  "plainly when none was shown on the user's model."),

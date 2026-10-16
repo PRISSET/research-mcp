@@ -14,7 +14,8 @@ from kb.schemas import Paper
 SCHEMA = Path(__file__).with_name("schema.sql")
 # Columns added after the first release: (table, column, type). Old databases get them on open.
 MIGRATIONS = [("papers", "openalex_id", "TEXT"), ("papers", "kind", "TEXT NOT NULL DEFAULT 'paper'"),
-              ("papers", "extra", "TEXT NOT NULL DEFAULT '{}'")]
+              ("papers", "extra", "TEXT NOT NULL DEFAULT '{}'"),
+              ("paper_fulltext", "used_at", "TEXT")]   # last time a search or read returned it (see prune.py)
 # Fields a later source may fill in but never blank out.
 MERGE_FIELDS = ("abstract", "year", "published", "updated", "arxiv_id", "doi", "s2_id", "openalex_id", "venue",
                 "url", "pdf_url", "comment", "influential_count", "tldr")
@@ -136,6 +137,14 @@ class Database:
 
     def commit(self) -> None:
         self.conn.commit()
+
+    def touch(self, paper_ids: Iterable[str]) -> None:
+        """Mark full texts as used: prune.py keeps what searches keep returning."""
+        ids = list(paper_ids)
+        if ids:
+            self.conn.execute(f"UPDATE paper_fulltext SET used_at = datetime('now') WHERE paper_id IN "
+                              f"({','.join('?' * len(ids))})", ids)
+            self.conn.commit()
 
     def _reindex(self, paper_id: str) -> None:
         self.conn.execute("DELETE FROM papers_fts WHERE paper_id = ?", (paper_id,))

@@ -184,4 +184,4 @@ def find_papers(db: Database, query: str, limit: int = 15, year_from: int | None
             b["in_notebook"] = on_paper(pid)
         out.append(b)
     return {"query": query, "sources": status, "results": out,
-            "next": "fetch_fulltext(ids) for the promising ones, then search_fulltext / read_passage for details."}
+            "next": "fetch(paper_ids=…) for the promising ones, then search_fulltext (and its chunk_id) for details."}

@@ -25,20 +25,10 @@ fulltext = [
     "pymupdf>=1.28.2",
     "selectolax>=1.0.0",
 ]
+# Semantic search with a static embedding model: numpy + tokenizers, no torch.
 embed = [
-    "sentence-transformers>=3.3",
-    "torch>=2.5",
+    "model2vec>=0.7",
 ]
-
-# The server runs its embedding / reranking models on the CPU, so it needs no CUDA build of torch
-# (~200 MB instead of ~2.5 GB). This affects only this project's own environment.
-[tool.uv.sources]
-torch = [{ index = "pytorch-cpu", marker = "sys_platform != 'darwin'" }]
-
-[[tool.uv.index]]
-name = "pytorch-cpu"
-url = "https://download.pytorch.org/whl/cpu"
-explicit = true
 
 [build-system]
 requires = ["hatchling"]

@@ -104,7 +104,7 @@ def research_brief(topic: str, goal: str | None = None, environment: str | None 
         "optional_questions": optional if not ready else [],
         "brief": brief,
         "next": (
-            "Ready: notebook_start(title, question=<goal + this brief>), then search. Put success_metric and "
+            "Ready: notebook_write(title=…, question=<goal + this brief>), then search. Put success_metric and "
             "constraints into every judgement: drop candidates that break a constraint."
             if ready else
             "Ask the user these questions now (all at once; with AskUserQuestion if you have it), offering likely "

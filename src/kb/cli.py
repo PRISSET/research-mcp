@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-
 import typer
 from rich.console import Console
 from rich.table import Table
@@ -49,18 +47,17 @@ def fetch(paper_ids: list[str]) -> None:
     """Download and index full texts of these papers."""
     from kb.process.fulltext import fetch_papers
 
-    os.environ.setdefault("KB_EMBED_SYNC", "1")   # a CLI run exits right away: no background worker
     with Database() as db:
         console.print(fetch_papers(db, paper_ids))
 
 
 @app.command()
-def search(query: str, k: int = 8, rerank: bool = True) -> None:
-    """Hybrid search inside fetched full texts (BM25 + vectors + reranker)."""
+def search(query: str, k: int = 8) -> None:
+    """Hybrid search inside fetched full texts (BM25 + vectors)."""
     from kb.process.search import search as fulltext_search
 
     with Database() as db:
-        for r in fulltext_search(db, query, k=k, rerank=rerank):
+        for r in fulltext_search(db, query, k=k):
             console.print(f"[bold]{r['score']:.3f}[/] {r['title'][:70]} [{r['grade']}] — {r['section'][:60]}")
             console.print("   " + r["text"][:300].replace("\n", " "))
 
@@ -119,12 +116,21 @@ def base_fulltext(
 
 
 @base_app.command("embed")
-def base_embed(batch: int = typer.Option(32), limit: int = typer.Option(None)) -> None:
-    """Embed passages that have no vector yet (GPU if available)."""
+def base_embed(limit: int = typer.Option(None)) -> None:
+    """Embed passages that have no vector yet."""
     from kb.process import embed
 
     with Database() as db:
-        console.print(embed.embed_pending(db, batch_size=batch, limit=limit))
+        console.print(embed.embed_pending(db, limit=limit))
+
+
+@base_app.command("prune")
+def base_prune(days: int = typer.Option(60, help="Drop full texts not cited and not used for this many days")) -> None:
+    """Drop what the agent read but never used again (the notebook's sources are always kept), then VACUUM."""
+    from kb.store.prune import prune
+
+    with Database() as db:
+        console.print(prune(db, days))
 
 
 @base_app.command("claims")

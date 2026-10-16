@@ -79,7 +79,7 @@ def refresh(section: str, since: str | None = None, max_queries: int = 3) -> dic
         "section": sec["id"], "since": start, "queries": queries,
         "new_since": {k: list(v.values())[:10] for k, v in found.items()},
         "updates_to_cited": updates,
-        "next": ("Read what matters (fetch_url / fetch_fulltext), add it with notebook_add_source, revise the conclusions "
+        "next": ("Read what matters (fetch(url=…) / fetch(paper_ids=…)), add it with notebook_add_source, revise the conclusions "
                  "with notebook_write(summary=…) — that also moves the section's date forward."),
     }
 

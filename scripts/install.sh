@@ -7,8 +7,8 @@
 #   --dir PATH       where to clone (default: this checkout, or ~/research-mcp)
 #   --notebook FILE  the shared research notebook (default: ~/research/RESEARCH.md)
 #   --lang ru|en     language of the notebook headings (default: ru)
-#   --embed          semantic search: torch (CPU build, ~200 MB) + sentence-transformers (default)
-#   --no-embed       skip them: keyword search only, smaller install
+#   --embed          semantic search: a static embedding model (model2vec, no torch, ~130 MB RAM) (default)
+#   --no-embed       skip it: keyword search only
 # The server runs on the CPU (registered with CUDA_VISIBLE_DEVICES=""): the GPU stays free for your own work.
 #   --agent-rules    add a short rules block to ~/.claude/CLAUDE.md and ~/.codex/AGENTS.md so agents in every project
 #                    look models / versions / errors up with this MCP (marked block; remove: --remove-agent-rules)

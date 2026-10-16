@@ -329,7 +329,7 @@ def compare_models(model_ids: list[str]) -> dict[str, Any]:
                     card = ""
             f["benchmarks_from_card"] = benchmark_rows(card)
             if not f["benchmarks_from_card"]:
-                f["benchmarks_from_card"] = "none in the card: see the tech report (paper_code) or leaderboards"
+                f["benchmarks_from_card"] = "none in the card: see the tech report (source_info(code=true)) or leaderboards"
             return f
 
         with ThreadPoolExecutor(max_workers=6) as pool:
@@ -405,7 +405,7 @@ def dataset_info(dataset_id: str, sample_rows: int = 3) -> dict[str, Any]:
             pass
     finally:
         http.close()
-    out["next"] = "fetch_url the dataset page for the card (collection method, filtering, known issues, licence terms)"
+    out["next"] = "fetch the dataset page for the card (collection method, filtering, known issues, licence terms)"
     return out
 
 
@@ -472,6 +472,6 @@ def paper_code(paper: str) -> dict[str, Any]:
                 out["github_mentions"] = "GitHub search unavailable (rate limit): try github_search later"
     finally:
         http.close()
-    out["next"] = ("fetch_url the official repo (README: install, checkpoints, licence, open issues) before relying on it; "
+    out["next"] = ("fetch the official repo (README: install, checkpoints, licence, open issues) before relying on it; "
                    "an unofficial reimplementation may differ from the paper's numbers")
     return out

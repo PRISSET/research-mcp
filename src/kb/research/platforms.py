@@ -207,7 +207,7 @@ def hf_search(db: Database, query: str, kind: str = "models", sort: str = "trend
                 p = row.get("paper") or row
                 out.append({"id": f"arxiv:{p.get('id')}", "title": p.get("title"), "upvotes": p.get("upvotes"),
                             "date": _date(p.get("publishedAt")), "summary": (p.get("summary") or "")[:400],
-                            "next": "find_papers / fetch_fulltext with this arXiv id"})
+                            "next": "find_papers / fetch(paper_ids=[…]) with this arXiv id"})
             return {"query": query, "kind": kind, "results": out}
         single = kind.rstrip("s")
         seen: dict[str, Any] = {}
@@ -315,7 +315,7 @@ def forum_search(db: Database, query: str, sites: list[str] | None = None, limit
             except Exception as e:
                 out["stackoverflow"] = {"error": f"{type(e).__name__}: {e}"[:200]}
         db.commit()
-        return {"query": query, **out, "next": "fetch_url(url) to read a thread in full"}
+        return {"query": query, **out, "next": "fetch(url=…) to read a thread in full"}
     finally:
         http.close()
 

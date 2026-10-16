@@ -14,48 +14,31 @@ from kb.store import Database
 T = TypeVar("T")
 
 INSTRUCTIONS = """\
-Research engine for any field. It searches papers (OpenAlex, arXiv, Semantic Scholar), GitHub (repos, issues,
-PRs), Hugging Face (models, datasets, spaces), forums (Hacker News, Stack Overflow) and the web, reads any of
-them in full, grades evidence (A official ... D disputed) and keeps findings in one Markdown file, RESEARCH.md.
+Research engine for ML and any other field: papers (OpenAlex, arXiv, Semantic Scholar), GitHub, Hugging Face,
+forums and the web, read in full, graded by evidence (A official ... D disputed), with findings kept in one
+Markdown file, RESEARCH.md. What it reads is cached locally and searchable (search_fulltext).
 
 Rules that matter most:
 - Your training data is out of date. Before recommending, choosing, installing or configuring a model, library or
-  tool, look it up here — research_sweep / hf_search / github_search, and check_versions for what is already in
-  use. Never assume a model or version does not exist because you do not know it.
-- Recommending a model: call latest_models for the task first and say when each candidate was released; prefer
-  current releases unless an older model is clearly better for the user's constraints (say why).
-- Before telling the user which weights to download or load: model_variants with their GPU. Do not default to
-  bf16 when it does not fit or barely fits — offer FP8 / INT8 (near-lossless, half the memory), state the quality
-  cost and whether the GPU computes FP8 natively or only stores it. 4-bit and below only when 8-bit cannot fit.
-- Before promising that a model will run or train on the user's hardware: estimate_resources (VRAM breakdown,
-  fits or not, tokens/s, training hours). Choosing between models: compare_models (sizes, context, licence,
-  card benchmarks). Before using a dataset: dataset_info. Before reimplementing a paper: paper_code.
-- When a command, install, build or run fails: call diagnose_error with the exact error text (and library +
-  version) BEFORE trying fixes by guessing. Closed issues and merged PRs usually name the fix and the version.
-- If you have your own web search / fetch tools, use them too, and pass the useful pages to fetch_url so they are
-  indexed and can be cited in the notebook.
+  tool, look it up here (research_sweep / hf_search / github_search; check_versions for what is already in use).
+  Never assume a model or version does not exist because you do not know it.
+- Recommending a model: latest_models for the task first, and say when each candidate was released.
+- Which weights to download: model_variants with the user's GPU. Do not default to bf16 when it does not fit or
+  barely fits — offer FP8 / INT8 (near-lossless, half the memory) and state the quality cost. 4-bit and below
+  only when 8-bit cannot fit. Will it run or train on their hardware: estimate_resources.
+- A command, install, build or run failed: diagnose_error with the exact error text BEFORE guessing at fixes.
+- If you have your own web search / fetch tools, use them too, and pass useful pages to fetch so they are cached
+  and can be cited in the notebook.
 
-Research workflow:
-0. research_brief(topic, …what you know) — if anything important is missing (goal, environment, baseline to beat,
-   how "better" is judged, constraints such as speed or memory), ASK the user and repeat until it is ready.
-1. notebook_read(query=...) — reuse earlier research; notebook_refresh on a stale section.
-2. notebook_start(title, question).
-3. research_sweep(query) for the landscape. When the user wants a solution or an improvement, find_methods(goal,
-   queries=[several phrasings], baselines=[what to beat]) — it finds the strong recent methods with their claimed
-   gains. Then find_papers / github_search / hf_search / forum_search / web_search with focused English queries;
-   follow_citations on key papers.
-4. Read before concluding: fetch_url (any page, repo, issue, model card), fetch_fulltext (papers), then
-   search_fulltext(question, section=...), read_passage, find_paper_numbers. Never take numbers from snippets.
-5. critique / what_others_say / verify_claim / check_versions before trusting a strong claim or an old setup.
-6. notebook_add_source for every source worth keeping (what it says, numbers with conditions, limitations,
-   applicability), notebook_write(summary=...) with conclusions citing source ids.
+Research workflow: research_brief (ask the user what it reports missing) -> notebook_read(query=…) to reuse
+earlier work -> notebook_write(title=…, question=…) to open a topic -> research_sweep / find_methods / find_papers
+-> fetch the promising sources and read them (search_fulltext with English queries, evidence for numbers) ->
+source_info(critique=true) on what conclusions rely on -> notebook_add_source per source -> notebook_write(summary=…).
 Write notes in the user's language. Only sources returned by these tools can be added — never invent citations.
 
-Answer like an expert, not a search engine: lead with the few strongest options, each with its measured gain
-(number, metric, model and steps it was measured on, source), its cost (extra model calls, speed, memory), whether
-it needs training, code availability and how to plug it into the user's pipeline. No generic advice and no long
-lists of weak candidates; if nothing measured beats the baseline on the user's setup, say so in one line and give
-the experiment that would decide it.
+Answer like an expert: lead with the few strongest options, each with its measured gain (number, metric,
+conditions, source), its cost, whether it needs training, code availability and how to plug it in. If nothing
+measured beats the baseline, say so and give the experiment that would decide it.
 """
 
 def _instructions() -> str:
@@ -86,31 +69,27 @@ def _safe(fn: Callable[[], T]) -> T | dict[str, str]:
         return {"error": str(e)}
 
 
+def _unknown(source_id: str) -> dict[str, str]:
+    return {"error": f"unknown source {source_id}: find it with the search tools first"}
+
+
 # ---------------- finding ----------------
 
 @mcp.tool()
 def research_sweep(query: str, platforms: list[str] | None = None, per_platform: int = 6) -> dict:
-    """Ask every platform at once — start here when planning, choosing a model / library / approach, or entering
-    an unfamiliar topic: top papers, Hugging Face models, GitHub repos and issues, web pages and forum threads,
-    each graded. Then read the promising ones with fetch_url / fetch_fulltext.
+    """Search every platform at once — start here when planning, choosing a model / library / approach, or entering
+    an unfamiliar topic: papers, Hugging Face models, GitHub repos and issues, web pages (Brave / Tavily with a key,
+    otherwise DuckDuckGo) and forum threads (Hacker News, Stack Overflow), each graded. Then fetch the promising ones.
 
     Args:
-        query: short English query, e.g. "talking head lip sync", "MiniMax H3 LoRA training"
-        platforms: subset of ["papers", "models", "repos", "issues", "web", "forums"] (default: all)
+        query: short English query, e.g. "talking head lip sync"
+        platforms: subset of ["papers", "models", "repos", "issues", "web", "forums"] (default: all); e.g.
+            ["web"] for a plain web search, ["forums"] for community experience
         per_platform: results per platform (3-15)
     """
     from kb.research.sweep import research_sweep as _sweep
 
     return _sweep(query, platforms, per_platform)
-
-
-@mcp.tool()
-def web_search(query: str, limit: int = 10) -> dict:
-    """General web search (Brave / Tavily if a key is set, otherwise DuckDuckGo): docs, blogs, vendor pages,
-    announcements. Read results with fetch_url. If you have your own web search tool, use it as well."""
-    from kb.research.web import web_search as _web
-
-    return _with_db(lambda db: _web(db, query, min(limit, 20)))
 
 
 @mcp.tool()
@@ -130,10 +109,9 @@ def github_search(query: str, kind: str = "repos", repo: str | None = None, stat
 
 @mcp.tool()
 def hf_search(query: str, kind: str = "models", sort: str = "trending", limit: int = 10) -> dict:
-    """Search Hugging Face: models / datasets / spaces / papers, with release date and age, downloads, likes,
-    license, task, base model and relation (quantized / finetune / adapter). Matches repo names, so use short
-    name-like queries ("MiniMax-H3", "whisper russian", "lipsync"). For "what is newest for task X" use
-    latest_models instead.
+    """Search Hugging Face models / datasets / spaces / papers: release date, downloads, likes, license, task,
+    base model and relation (quantized / finetune / adapter). Matches repo names: use short name-like queries
+    ("whisper russian"). For "what is newest for task X" use latest_models.
 
     Args:
         kind: models | datasets | spaces | papers;  sort: trending | downloads | likes | created | recent
@@ -145,29 +123,24 @@ def hf_search(query: str, kind: str = "models", sort: str = "trending", limit: i
 
 
 @mcp.tool()
-def forum_search(query: str, sites: list[str] | None = None, limit: int = 8) -> dict:
-    """Community experience: Hacker News discussions and Stack Overflow questions (score, accepted answer).
+def find_papers(query: str | None = None, limit: int = 15, year_from: int | None = None,
+                sources: list[str] | None = None, paper_id: str | None = None,
+                direction: str = "references") -> dict:
+    """Papers, live from OpenAlex, arXiv and Semantic Scholar plus the local cache; duplicates merged, ranked by
+    agreement between sources and citations, each graded A-D. With paper_id instead of a query: walk its citation
+    graph — direction "references" (what it builds on) or "citations" (follow-ups, reproductions, critiques).
 
     Args:
-        sites: subset of ["hackernews", "stackoverflow"] (default: both)
-    """
-    from kb.research.platforms import forum_search as _forum
-
-    return _with_db(lambda db: _forum(db, query, sites, min(limit, 20)))
-
-
-@mcp.tool()
-def find_papers(query: str, limit: int = 15, year_from: int | None = None, sources: list[str] | None = None) -> dict:
-    """Search papers live in OpenAlex (all fields), arXiv and Semantic Scholar plus the local cache; duplicates
-    merged, ranked by agreement between sources and citations, each graded A-D. Results are stored locally.
-
-    Args:
-        query: focused English query, e.g. "speculative decoding acceptance rate" (run several narrow queries
-            rather than one broad one)
-        limit: results to return (<= 40)
-        year_from: only papers from this year on
+        query: focused English query (several narrow queries beat one broad one)
         sources: subset of ["openalex", "arxiv", "s2", "local"] (default: all)
+        paper_id: e.g. "arxiv:2211.17192" or "doi:10.1038/..."
     """
+    if paper_id:
+        from kb.research.graph import follow_citations
+
+        return _with_db(lambda db: follow_citations(db, paper_id, direction, min(limit, 50)))
+    if not query:
+        return {"error": "pass query, or paper_id to follow citations"}
     from kb.research.find import SOURCES
     from kb.research.find import find_papers as _find
 
@@ -178,20 +151,15 @@ def find_papers(query: str, limit: int = 15, year_from: int | None = None, sourc
 @mcp.tool()
 def find_methods(goal: str, queries: list[str] | None = None, baselines: list[str] | None = None, years: int = 2,
                  limit: int = 12, section: str | None = None, save_top: int = 6) -> dict:
-    """The strongest recent METHODS for a concrete goal ("a better sampler than X at the same cost", "reduce
-    hallucinations in Y without retraining"). Searches many phrasings plus the papers that cite the baseline you
-    want to beat, ranks by meaning against the goal and by evidence, and returns for each: the claimed gain
-    (sentences with numbers from the abstract), training-free or not, extra model calls, venue, code link.
-    Use it instead of find_papers when the user wants solutions, not background.
+    """The strongest recent METHODS for a concrete goal ("a better sampler than X at the same cost"). Searches many
+    phrasings plus the papers that cite the baseline to beat, ranks by meaning and evidence, and returns for each
+    the claimed gain (numbers from the abstract), training-free or not, extra model calls, venue, code link.
 
     Args:
-        goal: the goal with its constraints, one or two English sentences (what to improve, on what, at what cost)
-        queries: 3-8 short English phrasings using different words for the same thing (solver / sampler /
-            integrator, method-family names, the metric) — the best paper often uses a word you did not
-        baselines: the method(s) to beat, by name ("DPM-Solver++", "UniPC") — newer work cites and compares to them
-        years: how far back to look (default 2)
-        section: a RESEARCH.md topic (from notebook_start): the top `save_top` candidates are written there right
-            away with their claimed gains, marked as not yet verified — refine them with notebook_add_source(replace=true)
+        goal: the goal with its constraints, one or two English sentences
+        queries: 3-8 short English phrasings with different words for the same thing (method-family names, metric)
+        baselines: the method(s) to beat, by name — newer work cites and compares to them
+        section: a RESEARCH.md topic: the top `save_top` candidates are written there, marked as not yet verified
     """
     from kb.research.methods import find_methods as _find
 
@@ -235,8 +203,8 @@ def research_brief(topic: str, goal: str | None = None, environment: str | None 
                    success_metric: str | None = None, constraints: str | None = None, deliverable: str | None = None,
                    already_tried: str | None = None, user_declined: list[str] | None = None) -> dict:
     """Call FIRST for any research, planning or "find the best way to…" request. Fill every field you can from
-    the conversation; it returns what is still missing as concrete questions for the user. Ask them, call again
-    with the answers, and search only when `ready` is true — a precise brief is what makes the answer strong.
+    the conversation; it returns what is still missing as questions for the user. Ask them, call again with the
+    answers, and search only when `ready` is true.
 
     Args:
         topic: the user's request, verbatim
@@ -251,91 +219,128 @@ def research_brief(topic: str, goal: str | None = None, environment: str | None 
 
 
 @mcp.tool()
-def follow_citations(paper_id: str, direction: str = "references", limit: int = 20) -> dict:
-    """Walk the citation graph: "references" = what the paper builds on (foundations, baselines), "citations" =
-    later work that cites it (follow-ups, reproductions, critiques). Influential and most-cited first.
-
-    Args:
-        paper_id: id from find_papers, e.g. "arxiv:2211.17192" or "doi:10.1038/..."
+def source_info(source_id: str, critique: bool = False, code: bool = False, others_say: bool = False,
+                stance: str | None = None) -> dict:
+    """Everything about one source (paper, repo, issue, model, page): metadata, platform data, stored evidence
+    grade, full-text status, notebook sections citing it. Options (each makes live requests):
+      critique: re-grade A-D with reasons — papers: peer review, OpenReview status, venue, code, citations, vendor
+        self-report; other sources: official org, adoption, maintenance, license, unsafe pickle weights, issues.
+      code: for a paper — the official repo, project page and Hugging Face artifacts built on it.
+      others_say: what later papers say about it (Semantic Scholar citation contexts), critical first;
+        stance: critical | possible_critical | comparative | neutral.
     """
-    from kb.research.graph import follow_citations as _follow
-
-    return _with_db(lambda db: _follow(db, paper_id, direction, min(limit, 50)))
-
-
-@mcp.tool()
-def get_source(source_id: str) -> dict:
-    """Everything stored about one source (paper, repo, issue, model, page): metadata, platform data (stars,
-    downloads, license, state), evidence grade with flags, full-text status, notebook sections citing it."""
     def run(db: Database) -> dict:
         p = db.get_paper(source_id)
-        if p is None:
-            return {"error": f"unknown source {source_id}: find it with the search tools first"}
+        if p is None and not code:
+            return _unknown(source_id)
         from kb.research.find import brief
 
-        return {**p, **brief(db, p["id"], abstract_chars=5000), "in_notebook": notebook.sections_with(p["id"])}
+        out: dict = {}
+        if p is not None:
+            out = {**p, **brief(db, p["id"], abstract_chars=5000), "in_notebook": notebook.sections_with(p["id"])}
+            if critique:
+                out["critique"] = _critique(db, p)
+            if others_say:
+                from kb.critic.citation_contexts import what_others_say
+
+                out["others_say"] = what_others_say(db, p["id"], stance, 20)
+        if code:
+            from kb.research.ml import paper_code
+
+            out["code"] = paper_code((p or {}).get("arxiv_id") or source_id)
+        return out
 
     return _with_db(run)
+
+
+def _critique(db: Database, p: dict) -> dict:
+    if p.get("kind", "paper") != "paper":
+        import json
+
+        from kb.critic.sources import grade_doc
+
+        g = grade_doc(p["kind"], p.get("extra") or {}, p["id"])
+        db.conn.execute("INSERT OR REPLACE INTO critique (source_id, kind, grade, reasons, flags) VALUES (?, ?, ?, ?, ?)",
+                        (p["id"], p["kind"], g["grade"], json.dumps(g["reasons"]), json.dumps(g["flags"])))
+        db.commit()
+        return g
+    from kb.critic.openreview import check_openreview
+    from kb.critic.scoring import grade_and_save
+
+    try:
+        check_openreview(db, paper_ids=[p["id"]])
+    except Exception:
+        pass
+    r = grade_and_save(db, p["id"])
+    db.commit()
+    return r or {}
 
 
 # ---------------- reading ----------------
 
 @mcp.tool()
-def fetch_url(url: str | None = None, urls: list[str] | None = None) -> dict:
-    """Read any page and index it for search_fulltext: docs, blogs, vendor sites, PDFs, GitHub repos (README +
-    release notes), files and issue / PR threads (all comments, maintainers marked), Hugging Face model cards
-    (with license, files, parameters), arXiv papers, Hacker News threads. Returns the text (first 12k chars),
-    an outline and the source id for notebook_add_source. Pass `urls` (up to 12) to read several pages in
-    parallel (5k chars each)."""
-    from kb.research.web import fetch_many
-    from kb.research.web import fetch_url as _fetch
+def fetch(url: str | None = None, urls: list[str] | None = None, paper_ids: list[str] | None = None,
+          refresh: bool = False) -> dict:
+    """Read sources and cache them for search_fulltext. url / urls (up to 12, read in parallel): any page — docs,
+    blogs, PDFs, GitHub repos (README + release notes), issue / PR threads (maintainers marked), Hugging Face
+    model cards, arXiv papers, Hacker News threads; returns the text (12k chars, 5k each for several), an outline
+    and the source id for notebook_add_source. paper_ids (up to 10, from find_papers): full texts from arXiv or an
+    open-access PDF, split into passages with their numbers extracted."""
+    out: dict = {}
+    if paper_ids:
+        from kb.process.fulltext import fetch_papers
 
-    if urls:
-        return {"results": fetch_many(urls + ([url] if url else []))}
-    if not url:
-        return {"error": "pass url or urls"}
+        out["papers"] = _with_db(lambda db: fetch_papers(db, paper_ids[:10], refresh=refresh))
+    pages = (urls or []) + ([url] if url else [])
+    if len(pages) > 1:
+        from kb.research.web import fetch_many
 
-    def run(db: Database) -> dict:
-        try:
-            return _fetch(db, url)
-        except Exception as e:
-            return {"url": url, "error": f"{type(e).__name__}: {str(e)[:200]}",
-                    "next": "try your own fetch tool, or another page with the same information"}
+        out["results"] = fetch_many(pages)
+    elif pages:
+        from kb.research.web import fetch_url
 
-    return _with_db(run)
+        def run(db: Database) -> dict:
+            try:
+                return fetch_url(db, pages[0])
+            except Exception as e:
+                return {"url": pages[0], "error": f"{type(e).__name__}: {str(e)[:200]}",
+                        "next": "try your own fetch tool, or another page with the same information"}
 
-
-@mcp.tool()
-def fetch_fulltext(paper_ids: list[str], refresh: bool = False) -> dict:
-    """Download and index full texts (arXiv HTML/PDF or an open-access PDF): split into passages, extract numbers,
-    embed for semantic search. Needed before search_fulltext / find_paper_numbers can see a paper. Up to 10 ids
-    per call; papers without an open full text are reported (then work from the abstract)."""
-    from kb.process.fulltext import fetch_papers
-
-    return _with_db(lambda db: fetch_papers(db, paper_ids[:10], refresh=refresh))
+        page = _with_db(run)
+        if not paper_ids:
+            return page
+        out["page"] = page
+    return out or {"error": "pass url, urls or paper_ids"}
 
 
 @mcp.tool()
 def search_fulltext(
-    query: str,
+    query: str | None = None,
     k: int = 8,
     section: str | None = None,
     paper_ids: list[str] | None = None,
     year_from: int | None = None,
     grades: str | None = None,
     kinds: list[str] | None = None,
+    chunk_id: int | None = None,
+    window: int = 1,
 ) -> list[dict] | dict:
-    """Semantic + keyword search INSIDE fetched full texts (methods, tables, ablations, limitations), reranked.
-    Works across languages. Every hit has a citation (paper, section) and the paper's grade.
+    """Keyword + semantic search INSIDE everything fetched so far (methods, tables, ablations, limitations). Write
+    the query in English. Every hit has a citation (paper, section), the paper's grade and a chunk_id; pass
+    chunk_id (instead of a query) to read that passage with `window` neighbours on each side before citing it.
 
     Args:
-        query: a natural-language question, e.g. "how does acceptance rate change with draft model size"
-        section: limit to papers of this notebook section
-        paper_ids: limit to these papers
+        query: a natural-language English question, e.g. "how does acceptance rate change with draft model size"
+        section: limit to papers of this notebook section;  paper_ids: limit to these sources
         grades: e.g. "AB" to keep only strong evidence
         kinds: subset of ["text", "table", "figure"]; tables carry the actual numbers
     """
-    from kb.process.search import search
+    from kb.process.search import context, search
+
+    if chunk_id is not None:
+        return _with_db(lambda db: context(db, chunk_id, max(0, min(window, 4))))
+    if not query:
+        return {"error": "pass query, or chunk_id to read a passage"}
 
     def run(db: Database) -> list[dict] | dict:
         try:
@@ -352,37 +357,43 @@ def search_fulltext(
 
 
 @mcp.tool()
-def read_passage(chunk_id: int, window: int = 1) -> list[dict]:
-    """A search_fulltext hit with its neighbouring passages, to read a claim in context before citing it."""
-    from kb.process.search import context
-
-    return _with_db(lambda db: context(db, chunk_id, min(window, 4)))
-
-
-@mcp.tool()
-def find_paper_numbers(
+def evidence(
+    claim: str | None = None,
+    section: str | None = None,
     kind: str | None = None,
     hardware: str | None = None,
     model: str | None = None,
     text: str | None = None,
     paper_id: str | None = None,
     limit: int = 30,
-) -> list[dict]:
-    """Numbers extracted from fetched full texts, verbatim with their conditions: speedups ("2.3x on H100"),
-    memory, step counts, latency, benchmark scores (accuracy, F1, BLEU, WER, FID, ...). Use to compare results
-    across papers and check whether they were measured under comparable conditions.
+) -> dict | list[dict]:
+    """Check numbers before trusting them. With a claim ("4-bit quantization loses <1% on MMLU"): related papers
+    with grades, full-text passages and extracted numbers, and a verdict on the strength of the evidence. Without
+    one: the numbers extracted from fetched full texts, verbatim with their conditions — speedups ("2.3x on
+    H100"), memory, step counts, latency, benchmark scores — to compare results across papers.
 
     Args:
+        section: look only at papers of this notebook section (with a claim)
         kind: speedup | memory | steps | latency | quality_metric
         hardware: e.g. "H100";  model: e.g. "Llama";  text: words that must appear;  paper_id: one paper
     """
+    if claim:
+        from kb.critic.claims import verify_claim
+
+        def verify(db: Database) -> dict:
+            try:
+                return verify_claim(db, claim, _section_papers(section))
+            except notebook.NotebookError as e:
+                return {"error": str(e)}
+
+        return _with_db(verify)
     from kb.process.claims import find
 
-    def run(db: Database) -> list[dict]:
+    def numbers(db: Database) -> list[dict]:
         pid = (db.get_paper(paper_id) or {"id": paper_id})["id"] if paper_id else None
         return find(db, kind, hardware, model, text, pid, min(limit, 100))
 
-    return _with_db(run)
+    return _with_db(numbers)
 
 
 # ---------------- errors & versions ----------------
@@ -406,11 +417,9 @@ def diagnose_error(error: str, library: str | None = None, version: str | None =
 
 @mcp.tool()
 def check_versions(items: list[str], focus: str | None = None) -> dict:
-    """Are these current? PyPI packages ("vllm==0.8.1", "torch"), Hugging Face models
-    ("Qwen/Qwen3-Omni-30B-A3B-Instruct": newer models of the same family and newer alternatives for the same
-    task) and GitHub repos ("gh:vllm-project/vllm@v0.9.0"). For outdated pinned versions it digests the release
-    notes in between: breaking changes, and lines about `focus` (e.g. "Qwen3-Omni audio").
-    Use before choosing a model, when setting up, and when debugging."""
+    """Are these current? PyPI packages ("vllm==0.8.1", "torch"), Hugging Face models (newer models of the same
+    family and newer alternatives) and GitHub repos ("gh:vllm-project/vllm@v0.9.0"). For outdated pinned versions
+    it digests the release notes in between: breaking changes, and lines about `focus` (e.g. "Qwen3-Omni audio")."""
     from kb.research.versions import check_versions as _check
 
     return _check(items, focus)
@@ -420,9 +429,9 @@ def check_versions(items: list[str], focus: str | None = None) -> dict:
 
 @mcp.tool()
 def latest_models(task: str, months: int = 9, limit: int = 10) -> dict:
-    """What is new for a task: the newest strong base models (labs' own releases first), the hottest
-    derivatives (fine-tunes, quantizations, LoRAs) and the older popular ones for comparison, with release
-    dates, plus leaderboards to check. Call before recommending any model.
+    """What is new for a task: the newest strong base models (labs' own releases first), the hottest derivatives
+    (fine-tunes, quantizations, LoRAs) and older popular ones for comparison, with release dates, plus
+    leaderboards. Call before recommending any model.
 
     Args:
         task: free text or a Hugging Face task, e.g. "text-to-video", "speech recognition", "LLM", "TTS"
@@ -434,44 +443,44 @@ def latest_models(task: str, months: int = 9, limit: int = 10) -> dict:
 
 
 @mcp.tool()
-def model_variants(model_id: str, vram_gb: float | None = None, gpu: str | None = None) -> dict:
-    """Which weights to download: every precision in the model's repo (bf16 / fp8 / int8 / w6a8 / GGUF …) and
-    the community's quantized versions, with sizes, whether each fits the GPU (detected automatically, or pass
-    vram_gb / gpu for another card) and the quality cost. Recommends the best quality that fits, offers FP8 /
-    INT8 when bf16 is tight, and says whether the GPU computes FP8 / FP4 natively.
+def model_variants(model_id: str, vram_gb: float | None = None, gpu: str | None = None,
+                   compare_with: list[str] | None = None) -> dict:
+    """Which weights to download: every precision in the model's repo (bf16 / fp8 / int8 / GGUF …) and the
+    community's quantized versions, with sizes, whether each fits the GPU (detected, or pass vram_gb / gpu) and
+    the quality cost; recommends the best quality that fits and says whether the GPU computes FP8 / FP4 natively.
+    compare_with: up to 5 other models for a side-by-side table (release date, parameters, architecture, context,
+    license, downloads, benchmark tables from the cards — self-reported, compare matching settings only).
 
     Args:
-        model_id: Hugging Face repo, e.g. "Qwen/Qwen3-8B" or "Comfy-Org/MiniMax-H3"
-        vram_gb, gpu: plan for another GPU, e.g. vram_gb=24, gpu="RTX 4090"
+        model_id: Hugging Face repo, e.g. "Qwen/Qwen3-8B"
     """
     from kb.research.models import model_variants as _variants
 
     try:
-        return _variants(model_id, vram_gb, gpu)
+        out = _variants(model_id, vram_gb, gpu)
     except Exception as e:
-        return {"error": f"{type(e).__name__}: {str(e)[:200]}"}
+        out = {"error": f"{type(e).__name__}: {str(e)[:200]}"}
+    if compare_with:
+        from kb.research.ml import compare_models
 
+        out["comparison"] = compare_models([model_id, *compare_with[:5]])
+    return out
 
-# ---------------- critique ----------------
 
 @mcp.tool()
 def estimate_resources(model_id: str, mode: str = "inference", precision: str | None = None, seq_len: int = 4096,
                        batch: int = 1, lora_rank: int = 16, gradient_checkpointing: bool = True,
                        train_tokens: float | None = None, gpu: str | None = None, vram_gb: float | None = None,
                        num_gpus: int = 1, kv_cache: str = "bf16") -> dict:
-    """Memory and time for running or training a Hugging Face model, from its real config and parameter count:
-    VRAM breakdown (weights, KV cache, activations, logits, gradients, optimizer states), whether it fits the GPU
-    (detected, or pass gpu / vram_gb), decode tokens/s, training hours for train_tokens, and what to change if it
-    does not fit. Call before promising that something will run or train on the user's hardware.
+    """Memory and time for running or training a Hugging Face model, from its real config: VRAM breakdown
+    (weights, KV cache, activations, gradients, optimizer states), whether it fits the GPU (detected, or pass
+    gpu / vram_gb), decode tokens/s, training hours for train_tokens, and what to change if it does not fit.
 
     Args:
-        model_id: "Qwen/Qwen3-8B" or a Hugging Face URL
         mode: inference | lora | qlora | full
         precision: bf16 | fp16 | fp8 | int8 | q8 | q6 | q5 | q4 | nf4 | awq | gptq | fp4 (default bf16; nf4 for qlora)
-        seq_len, batch: context per sequence and sequences per step
         train_tokens: total training tokens (dataset tokens x epochs) for a time estimate
-        num_gpus: tensor parallel (inference) or FSDP / ZeRO-3 (full) across this many GPUs
-        kv_cache: bf16 | fp8
+        num_gpus: tensor parallel (inference) or FSDP / ZeRO-3 (full);  kv_cache: bf16 | fp8
     """
     from kb.research.ml import estimate_resources as _est
 
@@ -480,110 +489,29 @@ def estimate_resources(model_id: str, mode: str = "inference", precision: str | 
 
 
 @mcp.tool()
-def compare_models(model_ids: list[str]) -> dict:
-    """Two to six Hugging Face models side by side: release date, parameters (active for MoE), architecture,
-    context length, license and gating, downloads — and the benchmark tables from each model card (gated cards
-    included). Card numbers are self-reported: compare only matching settings."""
-    from kb.research.ml import compare_models as _cmp
-
-    return _cmp(model_ids)
-
-
-@mcp.tool()
 def dataset_info(dataset_id: str, sample_rows: int = 3) -> dict:
-    """A Hugging Face dataset before using it: configs and splits with row counts, size, columns and types, a few
-    sample rows, license, gating, and the most used models trained on it."""
+    """A Hugging Face dataset before using it: configs and splits with row counts, size, columns and types, sample
+    rows, license, gating, and the most used models trained on it."""
     from kb.research.ml import dataset_info as _ds
 
     return _ds(dataset_id, max(0, min(sample_rows, 10)))
 
 
-@mcp.tool()
-def paper_code(paper: str) -> dict:
-    """Code and artifacts for an arXiv paper: the official repository (with stars), project page, and the Hugging
-    Face models, datasets and Spaces built on it; otherwise GitHub repos that cite it, the likely official one first.
-
-    Args:
-        paper: arXiv id or URL ("2509.00036", "https://arxiv.org/abs/2509.00036", "arxiv:2509.00036")
-    """
-    from kb.research.ml import paper_code as _code
-
-    return _code(paper)
-
-
-@mcp.tool()
-def critique(source_id: str) -> dict:
-    """Evidence grade A-D with reasons and flags. Papers: peer review, venue, code, citations, OpenReview status
-    (checked now), vendor self-report. Other sources: official org or not, adoption, maintenance (stale, archived),
-    license, unsafe pickle weights, open vs fixed issues."""
-    from kb.critic.openreview import check_openreview
-    from kb.critic.scoring import grade_and_save
-
-    def run(db: Database) -> dict:
-        p = db.get_paper(source_id)
-        if p is None:
-            return {"error": f"unknown source {source_id}: find it with the search tools first"}
-        if p.get("kind", "paper") != "paper":
-            import json
-
-            from kb.critic.sources import grade_doc
-
-            g = grade_doc(p["kind"], p.get("extra") or {}, p["id"])
-            db.conn.execute("INSERT OR REPLACE INTO critique (source_id, kind, grade, reasons, flags) VALUES (?, ?, ?, ?, ?)",
-                            (p["id"], p["kind"], g["grade"], json.dumps(g["reasons"]), json.dumps(g["flags"])))
-            db.commit()
-            return {"source": p["title"], "id": p["id"], "kind": p["kind"], **g}
-        try:
-            check_openreview(db, paper_ids=[p["id"]])
-        except Exception:
-            pass
-        r = grade_and_save(db, p["id"])
-        db.commit()
-        return {"paper": p["title"], "id": p["id"], **(r or {})}
-
-    return _with_db(run)
-
-
-@mcp.tool()
-def verify_claim(claim: str, section: str | None = None) -> dict:
-    """Do not take claims on faith: related papers with grades, full-text passages and extracted numbers about a
-    statement, with a verdict on the strength of the evidence. E.g. "4-bit quantization loses <1% on MMLU".
-
-    Args:
-        section: look only at papers of this notebook section
-    """
-    from kb.critic.claims import verify_claim as _verify
-
-    def run(db: Database) -> dict:
-        try:
-            return _verify(db, claim, _section_papers(section))
-        except notebook.NotebookError as e:
-            return {"error": str(e)}
-
-    return _with_db(run)
-
-
-@mcp.tool()
-def what_others_say(paper_id: str, stance: str | None = None, limit: int = 20) -> dict:
-    """What later papers say about a paper (Semantic Scholar citation contexts): critical, possible_critical,
-    comparative, neutral. Independent reports outweigh the authors' own claims.
-
-    Args:
-        stance: critical | possible_critical | comparative | neutral (default: all, critical first)
-    """
-    from kb.critic.citation_contexts import what_others_say as _what
-
-    return _with_db(lambda db: _what(db, paper_id, stance, min(limit, 100)))
-
-
 # ---------------- RESEARCH.md ----------------
 
 @mcp.tool()
-def notebook_read(section: str | None = None, query: str | None = None) -> dict | list[dict]:
-    """Read RESEARCH.md. No arguments: list of topics (question, paper count, last update) and the base size.
-    section: the full Markdown of one topic. query: where earlier research mentions these words."""
+def notebook_read(section: str | None = None, query: str | None = None, refresh: bool = False,
+                  since: str | None = None) -> dict | list[dict]:
+    """Read RESEARCH.md. No arguments: topics (question, source count, last update) and the local cache size.
+    section: one topic in full. query: where earlier research mentions these words. section + refresh=true: what
+    appeared since the topic was last updated (or since the ISO date `since`) — its saved queries re-run for
+    papers, models, repos and issues, and the models / repos it cites checked for newer versions."""
     if query:
         return notebook.search(query)
+    if section and refresh:
+        from kb.research.refresh import refresh as _refresh
+
+        return _safe(lambda: _refresh(section, since))
     if section:
         return _safe(lambda: notebook.read_section(section))
     from kb.research.refresh import stale_sections
@@ -592,40 +520,37 @@ def notebook_read(section: str | None = None, query: str | None = None) -> dict 
     stale = stale_sections()
     if stale:
         out["stale"] = stale
-        out["hint"] = "Sections older than 30 days: notebook_refresh(section) before relying on them."
+        out["hint"] = "Sections older than 30 days: notebook_read(section, refresh=true) before relying on them."
     return out
 
 
 @mcp.tool()
-def notebook_refresh(section: str, since: str | None = None) -> dict:
-    """What appeared since a topic was last updated: re-runs its saved queries for papers, Hugging Face models,
-    GitHub repos and issues published after its date, and checks the models / repos it cites for newer
-    versions. Use before relying on an old section.
-
-    Args:
-        since: ISO date to look from (default: the section's last update)
-    """
-    from kb.research.refresh import refresh
-
-    return _safe(lambda: refresh(section, since))
-
-
-@mcp.tool()
-def notebook_start(title: str, question: str, queries: list[str] | None = None) -> dict:
-    """Open a topic in RESEARCH.md (or return the existing one with the same title, to build on it).
-
-    Args:
-        title: short topic name in the user's language, e.g. "Ускорение MiniMax H3"
-        question: what the research must answer
-        queries: search queries used so far (shown in the section header)
-    """
-    return _safe(lambda: notebook.start(title, question, queries))
+def notebook_write(
+    section: str | None = None,
+    title: str | None = None,
+    question: str | None = None,
+    summary: str | None = None,
+    append: bool = False,
+    add_queries: list[str] | None = None,
+    remove_papers: list[str] | None = None,
+) -> dict:
+    """Open or update a topic in RESEARCH.md. title + question: open a topic (title short, in the user's language;
+    an existing topic with the same title is returned to build on). section: update its conclusions (summary,
+    Markdown; append=true adds to them), question, search queries, or remove sources that turned out irrelevant."""
+    if title:
+        opened = _safe(lambda: notebook.start(title, question or "", add_queries))
+        if "error" in opened or not (summary or remove_papers):
+            return opened
+        section, question, add_queries = opened["section"], None, None
+    if not section:
+        return {"error": "pass title (+ question) to open a topic, or section to update one"}
+    return _safe(lambda: notebook.write(section, summary, append, question, add_queries, remove_papers))
 
 
 @mcp.tool()
 def notebook_add_source(section: str, source_id: str, notes: str, replace: bool = False) -> dict:
     """Add a source (paper, repo, issue, model, page, thread) to a topic. Its title line (link, type, year, grade,
-    stars / downloads / citations, license, state) is generated from the base; `notes` is your Markdown analysis:
+    stars / downloads / citations, license, state) is generated; `notes` is your Markdown analysis:
     "- **Суть:** …\\n- **Цифры:** 2.3x on A100, batch 1 (табл. 3)\\n- **Ограничения:** …\\n- **Применимость:** …"
     A source already in the section is not duplicated; replace=true rewrites its notes."""
     from kb.critic.scoring import grade_and_save
@@ -643,24 +568,11 @@ def notebook_add_source(section: str, source_id: str, notes: str, replace: bool 
             from kb.critic.sources import grade_doc
 
             grade = grade_doc(p["kind"], p.get("extra") or {}, p["id"])["grade"]
+        db.touch([p["id"]])
         db.commit()
         return _safe(lambda: notebook.add_paper(section, {**p, "grade": grade}, notes, replace))
 
     return _with_db(run)
-
-
-@mcp.tool()
-def notebook_write(
-    section: str,
-    summary: str | None = None,
-    append: bool = False,
-    question: str | None = None,
-    add_queries: list[str] | None = None,
-    remove_papers: list[str] | None = None,
-) -> dict:
-    """Update a topic: its conclusions (summary, Markdown; append=true adds to the existing text), the question,
-    the list of search queries, or remove papers that turned out irrelevant."""
-    return _safe(lambda: notebook.write(section, summary, append, question, add_queries, remove_papers))
 
 
 # ---------------- prompt ----------------
@@ -681,22 +593,23 @@ def research(topic: str, depth: str = "normal") -> str:
         "from a source you read now.\n"
         "0. research_brief(topic, …everything you already know). While it is not ready, ask the user its "
         "questions (all at once) and call it again with the answers — never fill gaps by guessing.\n"
-        "1. notebook_read(query=…) to reuse earlier research; notebook_start with a short title and the precise "
-        "question (include the brief).\n"
+        "1. notebook_read(query=…) to reuse earlier research; notebook_write(title=…, question=…) to open the topic "
+        "(include the brief in the question).\n"
         "2. research_sweep for the landscape. If the user wants a solution or an improvement over something, "
         "find_methods(goal, queries=[3-8 phrasings with different words], baselines=[what to beat]). Then focused "
-        "find_papers / github_search (repos and issues) / hf_search / forum_search / web_search. Use your own web "
-        "search too and fetch_url the useful pages."
-        + (" follow_citations on the central papers in both directions." if depth == "deep" else "") + "\n"
-        "3. Read before concluding: fetch_url for repos, model cards, docs, issue threads; fetch_fulltext for "
-        "papers; search_fulltext(question, section=…) and find_paper_numbers for exact numbers and conditions.\n"
+        "find_papers / github_search (repos and issues) / hf_search / research_sweep(platforms=[\"web\"]). Use "
+        "your own web search too and fetch the useful pages."
+        + (" find_papers(paper_id=…) on the central papers in both directions." if depth == "deep" else "") + "\n"
+        "3. Read before concluding: fetch(url=…) for repos, model cards, docs, issue threads; fetch(paper_ids=…) for "
+        "papers; then search_fulltext(English question, section=…) and evidence(kind=…) for exact numbers and "
+        "conditions.\n"
         "4. For model choices: latest_models for the task (state release dates) and model_variants for the user's "
         "GPU (FP8 / INT8 before 4-bit when bf16 does not fit); check_versions on every library you will recommend; "
-        + ("critique and what_others_say for every key claim; " if depth == "deep" else
-           "critique the sources your conclusions rely on; ")
+        + ("source_info(critique=true, others_say=true) for every key source and evidence(claim=…) for every key "
+           "claim; " if depth == "deep" else "source_info(critique=true) on the sources your conclusions rely on; ")
         + "say when evidence is only C/D.\n"
         "5. notebook_add_source per source (what it says, numbers with conditions and where they come from, "
-        "limitations, applicability), then notebook_write(summary=…) with conclusions and a concrete "
+        "limitations, applicability), then notebook_write(section, summary=…) with conclusions and a concrete "
         "recommendation, citing source ids.\n"
         "Write the notes in the language of the request. Finish with a short answer and the path of RESEARCH.md: "
         "the 2-5 strongest options first, each with its measured gain (number, metric, conditions, source), cost "
@@ -717,12 +630,12 @@ def fix_error(error: str, library: str = "", version: str = "") -> str:
     return (
         "An error occurred. Do not guess at fixes yet.\n"
         f"1. diagnose_error(error=…, library={library or 'the package involved'!r}, version={version or 'installed'!r}).\n"
-        "2. Read the best matching issue / PR in full (fetch_url or the github link), including maintainers' "
-        "comments; note the version that contains the fix and any documented workaround.\n"
+        "2. Read the best matching issue / PR in full (fetch(url=…)), including maintainers' comments; note the "
+        "version that contains the fix and any documented workaround.\n"
         "3. check_versions for the libraries and models involved; if outdated, read the release notes first.\n"
-        "4. If nothing matches, use your own web search with the exact message, then fetch_url the results.\n"
+        "4. If nothing matches, use your own web search with the exact message, then fetch the results.\n"
         "5. Apply the documented fix, verify it, and if it took effort to find, record it in RESEARCH.md "
-        "(notebook_start / notebook_add_source / notebook_write).\n\n"
+        "(notebook_write(title=…) / notebook_add_source / notebook_write(section, summary=…)).\n\n"
         f"Error:\n{error}"
     )
 
@@ -736,18 +649,18 @@ def main() -> None:
 
     # Agents show the server's stderr: keep it to warnings, not one line per HTTP request.
     logging.basicConfig(level=logging.WARNING)
-    for name in ("httpx", "httpcore", "sentence_transformers", "transformers"):
+    for name in ("httpx", "httpcore"):
         logging.getLogger(name).setLevel(logging.WARNING)
     try:   # background helper: the user's own programs get the CPU first
         os.nice(int(os.environ.get("KB_NICE", "10")))
     except (AttributeError, OSError, ValueError):
         pass
-    if os.environ.get("KB_WARMUP", "1") != "0":
-        import threading
+    import threading
 
-        from kb.process.search import warm_up
+    from kb.store.prune import prune_daily
 
-        threading.Thread(target=warm_up, name="warm-up", daemon=True).start()
+    # Nothing is loaded at start: the embedding model loads on the first search and unloads when idle.
+    threading.Thread(target=prune_daily, name="prune", daemon=True).start()
     mcp.run()
 
 

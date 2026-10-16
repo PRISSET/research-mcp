@@ -41,7 +41,7 @@ def verify_claim(db: Database, claim: str, paper_ids: set[str] | None = None) ->
 
     strong = [g for g in graded if g["grade"] in ("A", "B")]
     if not graded and not passages:
-        verdict = "no evidence in the local base — run find_papers and fetch_fulltext on the topic first"
+        verdict = "no evidence in the local base — run find_papers and fetch(paper_ids=…) on the topic first"
     elif strong:
         verdict = "related A/B-graded papers found — read the passages to see whether they support or contradict it"
     else:

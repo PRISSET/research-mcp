@@ -143,7 +143,7 @@ def _find(text: str, section: str) -> dict[str, Any]:
         if section in (s["id"], s["title"]) or slug(section) == s["id"] or section.lower() == s["title"].lower():
             return s
     known = ", ".join(f'"{s["id"]}"' for s in secs) or "none yet"
-    raise NotebookError(f"no section {section!r}; existing: {known}. Create one with notebook_start.")
+    raise NotebookError(f"no section {section!r}; existing: {known}. Create one with notebook_write(title=…, question=…).")
 
 
 # ---------------- rendering ----------------
@@ -260,6 +260,14 @@ def search(query: str, limit: int = 10) -> list[dict[str, Any]]:
                 hits.append({"section": s["id"], "title": s["title"], "kind": kind, "paper_id": pid or None,
                              "score": score, "snippet": " ".join(body[max(0, i - 150): i + 350].split())})
     return sorted(hits, key=lambda h: h["score"], reverse=True)[:limit]
+
+
+def cited_ids() -> set[str]:
+    """Every source id the notebook cites: these are never pruned from the base."""
+    path = notebook_path()
+    if not path.exists():
+        return set()
+    return {p.group("id") for p in PAPER_RE.finditer(path.read_text(encoding="utf-8"))}
 
 
 def sections_with(paper_id: str) -> list[str]:

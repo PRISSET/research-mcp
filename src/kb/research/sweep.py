@@ -59,7 +59,7 @@ def research_sweep(query: str, platforms: list[str] | None = None, per_platform:
         "how_to_use": (
             "Cross-check: official model cards / repos (grade A) for facts about a model; GitHub issues for real-world "
             "problems and fixes; papers for methods and measured numbers; web/forums for recent news and experience. "
-            "Read the promising ones (fetch_url / fetch_fulltext). Before recommending a model run latest_models "
+            "Read the promising ones (fetch(url=…) / fetch(paper_ids=…)). Before recommending a model run latest_models "
             "for the task and model_variants for the user's GPU; check_versions on libraries; and use your own web "
             "search for anything announced in the last weeks."),
     }

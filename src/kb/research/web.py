@@ -159,9 +159,9 @@ def web_search(db: Database, query: str, limit: int = 10) -> dict[str, Any]:
                         "date": h.get("date"), "grade": g["grade"], "flags": g["flags"]})
         db.commit()
         return {"query": query, "engine": name, "results": out,
-                "next": "fetch_url(url) to read a page; if you have your own web search tool, use it too"}
+                "next": "fetch(url=…) to read a page; if you have your own web search tool, use it too"}
     return {"query": query, "error": "web search unavailable: " + "; ".join(errors),
-            "next": "use your own web search tool if you have one, then fetch_url the pages you find"}
+            "next": "use your own web search tool if you have one, then fetch the pages you find"}
 
 
 # ---------------- fetch ----------------

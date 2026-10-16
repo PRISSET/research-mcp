@@ -183,7 +183,7 @@ def check_versions(items: list[str], focus: str | None = None) -> dict[str, Any]
                 if str(r.get("status", "")).startswith("outdated") or r.get("newer_from_same_org")
                 or r.get("newer_alternatives")]
     return {"results": results, "attention": outdated,
-            "next": "For outdated items read the release notes (fetch_url on the changelog / github_read releases) "
+            "next": "For outdated items read the release notes (fetch the changelog or the GitHub releases page) "
                     "before upgrading; a newer model is not automatically better for the user's constraints."}
 
 

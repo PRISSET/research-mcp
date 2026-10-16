@@ -167,7 +167,7 @@ def latest_models(task: str, months: int = 9, limit: int = 10) -> dict[str, Any]
         "older_but_popular": older_popular,
         "leaderboards": sorted({u for t in tags for u in LEADERBOARDS.get(t, [])}),
         "note": ("Hugging Face shows open weights only: closed / API-only models and releases on other hubs are "
-                 "missing — check the leaderboards (fetch_url) and the labs' announcements with web search. "
+                 "missing — check the leaderboards (fetch) and the labs' announcements with web search. "
                  "Popularity is not quality: read the model cards and compare on the user's own constraints."),
     }
 

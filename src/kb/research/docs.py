@@ -121,10 +121,7 @@ def index_text(db: Database, doc_id: str, markdown: str, source: str, title: str
     extract_all(db, rebuild=True, paper_ids=[doc_id])
     vectors: Any = "skipped"
     if embed:
-        try:
-            from kb.process.embed import embed_later
+        from kb.process.embed import embed_now
 
-            vectors = embed_later([doc_id])
-        except Exception as e:  # no torch: keyword search still works
-            vectors = f"unavailable ({type(e).__name__})"
+        vectors = embed_now(db, [doc_id])
     return {"chunks": n, "vectors": vectors}

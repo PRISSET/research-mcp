@@ -39,7 +39,7 @@ Codex. Флаг `--agent-rules` добавляет в `~/.claude/CLAUDE.md` и `
 Сервер работает на процессоре, видеокарта остаётся вам. При каждом запуске он сам обновляется с GitHub, если вы не
 меняли файлы в папке установки.
 
-Флаги установщика: `--notebook FILE`, `--lang ru|en`, `--no-embed` (без смыслового поиска, легче), `--dir PATH`,
+Флаги установщика: `--notebook FILE`, `--lang ru|en`, `--no-embed` (только поиск по словам), `--dir PATH`,
 `--no-register`, `--remove-agent-rules`.
 
 ## Примеры запросов
@@ -59,13 +59,11 @@ Codex. Флаг `--agent-rules` добавляет в `~/.claude/CLAUDE.md` и `
 | Для чего | Инструменты |
 |---|---|
 | Уточнить задачу | `research_brief` |
-| Модели | `latest_models`, `model_variants`, `compare_models` |
-| Ресурсы, датасеты, код | `estimate_resources`, `dataset_info`, `paper_code` |
-| Поиск | `research_sweep`, `find_methods`, `find_papers`, `github_search`, `hf_search`, `forum_search`, `web_search`, `follow_citations` |
-| Чтение | `fetch_url`, `fetch_fulltext`, `get_source`, `search_fulltext`, `read_passage`, `find_paper_numbers` |
+| Модели | `latest_models`, `model_variants` (и сравнение моделей), `estimate_resources`, `dataset_info` |
+| Поиск | `research_sweep` (статьи, модели, репозитории, issues, веб, форумы), `find_methods`, `find_papers` (и граф цитирований), `github_search`, `hf_search` |
+| Чтение | `fetch` (страницы и полные тексты статей), `search_fulltext` (поиск по прочитанному), `evidence` (цифры и проверка утверждений), `source_info` (оценка, код, что пишут другие) |
 | Ошибки и версии | `diagnose_error`, `check_versions` |
-| Проверка утверждений | `critique`, `verify_claim`, `what_others_say` |
-| RESEARCH.md | `notebook_read`, `notebook_refresh`, `notebook_start`, `notebook_add_source`, `notebook_write` |
+| RESEARCH.md | `notebook_read`, `notebook_write`, `notebook_add_source` |
 
 Источники: OpenAlex, arXiv, Semantic Scholar, GitHub, Hugging Face, Hacker News, Stack Overflow, DuckDuckGo / Bing
 (или Brave / Tavily с ключом). Каждому источнику ставится оценка от A (официальный) до D (заброшенный или
@@ -115,14 +113,19 @@ tool_timeout_sec = 300
 | `GITHUB_TOKEN` | больше лимит запросов к GitHub |
 | `BRAVE_API_KEY`, `TAVILY_API_KEY` | веб-поиск лучше, чем DuckDuckGo |
 | `OPENALEX_API_KEY`, `S2_API_KEY` | больше лимит поиска статей |
-| `KB_DEVICE` | `cpu` (по умолчанию) или `cuda` |
-| `KB_CPU_THREADS`, `KB_CPU_THREADS_BG` | сколько ядер брать для поиска и для фоновой индексации |
-| `KB_MODEL_IDLE` | через сколько секунд простоя выгружать модели из памяти (по умолчанию 900) |
+| `KB_MODEL_IDLE` | через сколько секунд простоя выгружать модель эмбеддингов (по умолчанию 600) |
+| `KB_KEEP_DAYS` | сколько дней хранить прочитанное, которое не попало в блокнот и не находилось поиском (по умолчанию 60, `0` — хранить всё) |
 | `KB_AUTO_UPDATE` | `0` отключает автообновление |
 | `KB_HTTP_CACHE` | `0` отключает кеш ответов API |
 | `KB_DATA_DIR` | где хранить локальную базу (по умолчанию `data/`) |
 
-В `data/` лежит кеш: прочитанные тексты, векторы и ответы API. Его можно удалить, блокнот от него не зависит.
+В `data/` лежит кеш: прочитанные тексты, векторы и ответы API. Источники из блокнота хранятся всегда, остальное
+удаляется после `KB_KEEP_DAYS` дней без использования (`uv run kb base prune` делает это вручную). Кеш можно
+удалить целиком, блокнот от него не зависит.
+
+Поиск по прочитанному: BM25 плюс векторы статической модели
+[potion-retrieval-32M](https://huggingface.co/minishlab/potion-retrieval-32M) (model2vec, без torch, ~130 МБ RAM,
+грузится при первом поиске). Запросы к нему пишите по-английски. Качество проверяется `eval/run_search_eval.py`.
 
 ## Разработка
 

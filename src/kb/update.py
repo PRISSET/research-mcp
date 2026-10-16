@@ -53,7 +53,7 @@ def _sync() -> str:
     if not uv:
         return "dependencies changed but uv was not found: run `uv sync` in " + str(ROOT)
     cmd = [uv, "--directory", str(ROOT), "sync", "--inexact", "--extra", "fulltext"]
-    if find_spec("torch") is not None:   # keep semantic search if it was installed
+    if find_spec("model2vec") is not None or find_spec("torch") is not None:   # keep semantic search if installed
         cmd += ["--extra", "embed"]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=600, stdin=subprocess.DEVNULL)
     return "dependencies synced" if r.returncode == 0 else f"uv sync failed: {r.stderr.strip()[-300:]}"

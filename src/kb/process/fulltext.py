@@ -16,7 +16,7 @@ from kb.store import Database
 
 log = logging.getLogger(__name__)
 
-TARGET_WORDS = 280     # bge-m3 handles 8k tokens, but ~300-word chunks retrieve far more precisely
+TARGET_WORDS = 280     # ~300-word chunks retrieve far more precisely than whole sections
 MAX_WORDS = 420
 
 
@@ -89,9 +89,10 @@ def _store(db: Database, paper_id: str, source: str, blocks: list[Block]) -> int
         )
         n += 1
     db.conn.execute(
-        """INSERT INTO paper_fulltext (paper_id, status, source, n_chars, n_chunks) VALUES (?, 'ok', ?, ?, ?)
+        """INSERT INTO paper_fulltext (paper_id, status, source, n_chars, n_chunks, used_at)
+           VALUES (?, 'ok', ?, ?, ?, datetime('now'))
            ON CONFLICT(paper_id) DO UPDATE SET status='ok', source=excluded.source, n_chars=excluded.n_chars,
-               n_chunks=excluded.n_chunks, error=NULL, fetched_at=datetime('now')""",
+               n_chunks=excluded.n_chunks, error=NULL, fetched_at=datetime('now'), used_at=datetime('now')""",
         (paper_id, source, sum(len(b.text) for b in blocks), n),
     )
     return n
@@ -163,6 +164,7 @@ def fetch_papers(db: Database, paper_ids: list[str], embed: bool = True, refresh
             done = db.conn.execute("SELECT status, n_chunks FROM paper_fulltext WHERE paper_id = ?", (p["id"],)).fetchone()
             if done and done["status"] == "ok" and not refresh:
                 report[p["id"]] = f"already indexed ({done['n_chunks']} chunks)"
+                db.touch([p["id"]])
                 ok.append(p["id"])
                 continue
             how = fetch_one(db, http, p["id"], p.get("arxiv_id"), p.get("pdf_url"))
@@ -179,12 +181,9 @@ def fetch_papers(db: Database, paper_ids: list[str], embed: bool = True, refresh
     extract_all(db, paper_ids=ok)
     vectors = "skipped"
     if embed and ok:
-        try:
-            from kb.process.embed import embed_later
+        from kb.process.embed import embed_now
 
-            vectors = embed_later(ok)
-        except Exception as e:  # no torch installed: keyword search still works
-            vectors = f"unavailable ({type(e).__name__}): keyword search only"
+        vectors = embed_now(db, ok)
     return {"papers": report, "vectors": vectors}
 
 

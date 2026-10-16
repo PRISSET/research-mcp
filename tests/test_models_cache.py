@@ -199,23 +199,66 @@ def test_fetch_many_runs_in_parallel_and_trims(monkeypatch, tmp_path):
     assert len(out[0]["text"]) == 100 and out[0]["truncated"] and "blocked" in out[1]["error"]
 
 
-# ---------------- CPU budget, background embedding ----------------
+# ---------------- embeddings, hybrid search, pruning ----------------
 
-def test_cpu_budget_and_background_embedding(monkeypatch, tmp_path):
+class _FakeStatic:
+    """Bag-of-words vectors over a tiny vocabulary: enough to tell the hybrid search apart from BM25."""
+    VOCAB = ["quantization", "int8", "attention", "sparse", "video", "cache"]
+
+    def encode(self, texts, show_progress_bar=False):
+        import numpy as np
+
+        return np.array([[t.lower().count(w) + 0.01 for w in self.VOCAB] for t in texts], dtype=np.float32)
+
+
+def _base(monkeypatch, tmp_path):
+    from kb import config
     from kb.process import embed
-
-    monkeypatch.setattr(embed.os, "cpu_count", lambda: 8)
-    monkeypatch.delenv("KB_CPU_THREADS", raising=False)
-    monkeypatch.delenv("KB_CPU_THREADS_BG", raising=False)
-    assert embed.cpu_threads() == 4 and embed.cpu_threads(background=True) == 2
-    monkeypatch.setattr(embed.os, "cpu_count", lambda: 2)
-    assert embed.cpu_threads() == 1 and embed.cpu_threads(background=True) == 1
+    from kb.process.fulltext import _store
+    from kb.process.parse import Block
+    from kb.schemas import Paper
+    from kb.store import Database
 
     monkeypatch.setenv("KB_DATA_DIR", str(tmp_path))
-    from kb import config
-
     monkeypatch.setattr("kb.store.db.settings", config.Settings())
-    seen = []
-    monkeypatch.setattr(embed, "embed_pending", lambda db, paper_ids: seen.append(sorted(paper_ids)) or {"embedded": 1})
-    assert embed.embed_later(["web:a", "web:b"]).startswith("queued")
-    assert embed.wait_idle(10) and seen == [["web:a", "web:b"]]
+    monkeypatch.setattr(embed, "available", lambda: True)
+    monkeypatch.setattr(embed, "model", lambda: _FakeStatic())
+    embed._matrix.cache_clear()
+    db = Database()
+    for pid, text in (("web:a", "int8 quantization of attention"), ("web:b", "sparse video attention cache")):
+        db.upsert_paper(Paper(id=pid, title=pid, source="web"))
+        _store(db, pid, "web", [Block(section="Body", kind="text", text=text, page=None)])
+    db.commit()
+    return db, embed
+
+
+def test_embed_now_and_hybrid_search(monkeypatch, tmp_path):
+    from kb.process.search import context, search
+
+    db, embed = _base(monkeypatch, tmp_path)
+    assert embed.embed_now(db, ["web:a", "web:b"]) == "2 embedded"
+    assert db.conn.execute("SELECT COUNT(*) FROM chunks WHERE emb IS NULL").fetchone()[0] == 0
+    hits = search(db, "int8 quantization")
+    assert hits[0]["paper_id"] == "web:a"
+    assert [h["paper_id"] for h in search(db, "video cache", paper_ids={"web:b"})] == ["web:b"]
+    assert context(db, hits[0]["chunk_id"])[0]["text"].startswith("int8")
+    monkeypatch.setattr(embed, "MODEL", "another/model")     # a model change re-embeds everything
+    assert embed.embed_now(db, ["web:a"]) == "2 embedded"
+    db.close()
+
+
+def test_prune_keeps_cited_and_recent(monkeypatch, tmp_path):
+    from kb.store.prune import prune
+
+    db, _ = _base(monkeypatch, tmp_path)
+    db.conn.execute("CREATE TABLE h3_facts (x)")
+    db.conn.execute("UPDATE paper_fulltext SET used_at = datetime('now', '-90 days')")
+    db.conn.execute("UPDATE papers SET added_at = datetime('now', '-90 days')")
+    db.conn.execute("INSERT INTO papers (id, title, source, added_at) VALUES "
+                    "('arxiv:old', 'old', 'arxiv', datetime('now', '-90 days')), ('arxiv:new', 'new', 'arxiv', datetime('now'))")
+    db.commit()
+    out = prune(db, days=60, keep={"web:a"})
+    assert out == {"full_texts_dropped": 1, "records_dropped": 2, "tables_dropped": ["h3_facts"], "kept_cited": 1}
+    assert {r[0] for r in db.conn.execute("SELECT paper_id FROM chunks")} == {"web:a"}
+    assert {r[0] for r in db.conn.execute("SELECT id FROM papers")} == {"web:a", "arxiv:new"}
+    db.close()

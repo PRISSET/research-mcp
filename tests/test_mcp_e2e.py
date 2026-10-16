@@ -26,16 +26,17 @@ async def _run(env: dict[str, str]) -> dict:
             await s.initialize()
             tools = [t.name for t in (await s.list_tools()).tools]
             prompt = await s.get_prompt("research", {"topic": "квантование LLM", "depth": "quick"})
-            started = _json(await s.call_tool("notebook_start", {"title": "Квантование LLM", "question": "Что даёт 4-bit?"}))
+            started = _json(await s.call_tool("notebook_write", {"title": "Квантование LLM", "question": "Что даёт 4-bit?"}))
             added = _json(await s.call_tool("notebook_add_source", {
                 "section": started["section"], "source_id": "arxiv:2210.17323", "notes": "- **Суть:** GPTQ, 3-4 бита"}))
             invented = _json(await s.call_tool("notebook_add_source", {
                 "section": started["section"], "source_id": "arxiv:0000.00000", "notes": "выдумка"}))
             fix = await s.get_prompt("fix_error", {"error": "ValueError: boom", "library": "vllm"})
             overview = _json(await s.call_tool("notebook_read", {}))
+            info = _json(await s.call_tool("source_info", {"source_id": "arxiv:2210.17323"}))
+            nothing = _json(await s.call_tool("fetch", {}))
             return {"tools": tools, "prompt": prompt.messages[0].content.text, "added": added, "invented": invented,
-                    "fix": fix.messages[0].content.text,
-                    "overview": overview}
+                    "fix": fix.messages[0].content.text, "overview": overview, "info": info, "nothing": nothing}
 
 
 def test_research_flow_over_stdio(tmp_path):
@@ -48,11 +49,12 @@ def test_research_flow_over_stdio(tmp_path):
     notebook = tmp_path / "RESEARCH.md"
     env = {**os.environ, "KB_DATA_DIR": str(data), "RESEARCH_NOTEBOOK": str(notebook)}
     out = anyio.run(_run, env)
-    assert {"research_sweep", "fetch_url", "diagnose_error", "check_versions", "notebook_add_source"} <= set(out["tools"])
-    assert len(out["tools"]) == 31
+    assert {"research_sweep", "fetch", "diagnose_error", "check_versions", "notebook_add_source"} <= set(out["tools"])
+    assert len(out["tools"]) == 19
     assert "diagnose_error" in out["fix"] and "ValueError: boom" in out["fix"]
-    assert "квантование LLM" in out["prompt"] and "notebook_start" in out["prompt"]
+    assert "квантование LLM" in out["prompt"] and "notebook_write(title=" in out["prompt"]
     assert out["added"]["status"] == "added"
     assert "error" in out["invented"]                                      # no invented citations
     assert out["overview"]["sections"][0]["papers"] == 1 and out["overview"]["local_base"]["papers"] == 1
+    assert out["info"]["in_notebook"] == ["квантование-llm"] and "error" in out["nothing"]
     assert "[GPTQ: Accurate Post-Training Quantization](https://arxiv.org/abs/2210.17323)" in notebook.read_text()
