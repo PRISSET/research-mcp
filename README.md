@@ -47,6 +47,9 @@ curl -fsSL https://raw.githubusercontent.com/PRISSET/research-mcp/main/scripts/i
 (`~/.claude/CLAUDE.md` для Claude Code, `~/.codex/AGENTS.md` для Codex) короткое правило: проверять модели и
 версии через этот сервер. После установки перезапустите агента. Нужны оба агента сразу — `--agent all`.
 
+Сервер лёгкий: в простое около 80 МБ RAM, во время поиска по прочитанному около 250 МБ, torch и видеокарта не
+нужны. При каждом запуске он сам обновляется с GitHub, если вы не меняли файлы в папке установки.
+
 Флаги установщика: `--agent claude|codex|all`, `--notebook FILE`, `--lang ru|en`, `--no-embed` (только поиск по словам), `--dir PATH`,
 `--no-register`, `--remove-agent-rules`.
 
@@ -91,8 +94,18 @@ curl -fsSL https://raw.githubusercontent.com/PRISSET/research-mcp/main/scripts/i
 ```bash
 git clone https://github.com/PRISSET/research-mcp.git && cd research-mcp
 uv sync --extra fulltext --extra embed
-claude mcp add research -s user -e CUDA_VISIBLE_DEVICES= -- uv --directory "$(pwd)" run research-mcp
-codex mcp add research --env CUDA_VISIBLE_DEVICES= -- uv --directory "$(pwd)" run research-mcp
+```
+
+Затем зарегистрируйте сервер в своём агенте. Claude Code:
+
+```bash
+claude mcp add research -s user -- uv --directory "$(pwd)" run research-mcp
+```
+
+Codex:
+
+```bash
+codex mcp add research -- uv --directory "$(pwd)" run research-mcp
 ```
 
 Для Codex поднимите таймауты в `~/.codex/config.toml`:
@@ -106,8 +119,7 @@ tool_timeout_sec = 300
 Другие клиенты (stdio):
 
 ```json
-{ "mcpServers": { "research": { "command": "uv", "args": ["--directory", "/путь/к/research-mcp", "run", "research-mcp"],
-                                "env": { "CUDA_VISIBLE_DEVICES": "" } } } }
+{ "mcpServers": { "research": { "command": "uv", "args": ["--directory", "/путь/к/research-mcp", "run", "research-mcp"] } } }
 ```
 
 ## Настройки
