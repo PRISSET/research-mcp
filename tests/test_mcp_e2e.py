@@ -35,7 +35,13 @@ async def _run(env: dict[str, str]) -> dict:
             overview = _json(await s.call_tool("notebook_read", {}))
             info = _json(await s.call_tool("source_info", {"source_id": "arxiv:2210.17323"}))
             nothing = _json(await s.call_tool("fetch", {}))
-            return {"tools": tools, "prompt": prompt.messages[0].content.text, "added": added, "invented": invented,
+            learned = _json(await s.call_tool("notebook_write", {"section": started["section"], "knowledge": [
+                {"kind": "practice", "text": "GPTQ квантует по слоям с поправкой ошибки (OBS)",
+                 "sources": ["arxiv:2210.17323", "arxiv:0000.00000"]}]}))
+            review = _json(await s.call_tool("review_plan", {
+                "plan": "Разметка клипов: метки из закрытого списка, размечаю один",
+                "section": started["section"]}))
+            return {"learned": learned, "review": review, "tools": tools, "prompt": prompt.messages[0].content.text, "added": added, "invented": invented,
                     "fix": fix.messages[0].content.text, "overview": overview, "info": info, "nothing": nothing}
 
 
@@ -50,11 +56,14 @@ def test_research_flow_over_stdio(tmp_path):
     env = {**os.environ, "KB_DATA_DIR": str(data), "RESEARCH_NOTEBOOK": str(notebook)}
     out = anyio.run(_run, env)
     assert {"research_sweep", "fetch", "diagnose_error", "check_versions", "notebook_add_source"} <= set(out["tools"])
-    assert len(out["tools"]) == 19
+    assert len(out["tools"]) == 21
     assert "diagnose_error" in out["fix"] and "ValueError: boom" in out["fix"]
     assert "квантование LLM" in out["prompt"] and "notebook_write(title=" in out["prompt"]
     assert out["added"]["status"] == "added"
     assert "error" in out["invented"]                                      # no invented citations
     assert out["overview"]["sections"][0]["papers"] == 1 and out["overview"]["local_base"]["papers"] == 1
     assert out["info"]["in_notebook"] == ["квантование-llm"] and "error" in out["nothing"]
+    assert out["learned"]["added"] == 1 and out["learned"]["unknown_sources"] == ["arxiv:0000.00000"]
+    assert out["review"]["learned"]["practice"][0]["sources"] == ["arxiv:2210.17323"]
+    assert "agreement" in {g["id"] for g in out["review"]["not_addressed"]}
     assert "[GPTQ: Accurate Post-Training Quantization](https://arxiv.org/abs/2210.17323)" in notebook.read_text()

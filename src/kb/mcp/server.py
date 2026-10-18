@@ -36,6 +36,15 @@ earlier work -> notebook_write(title=…, question=…) to open a topic -> resea
 source_info(critique=true) on what conclusions rely on -> notebook_add_source per source -> notebook_write(summary=…).
 Write notes in the user's language. Only sources returned by these tools can be added — never invent citations.
 
+Be the specialist, not a search box. When the user does practical work in a field (designing an annotation
+schema or dataset, training, evaluation, a pipeline), first learn the field: study_topic(topic, terms=[its key
+concepts], section=…) searches it facet by facet (foundations, reference datasets / systems, each concept, the
+decisions every such project makes, practices, pitfalls, tools) and reads the best sources; write what you learn
+with notebook_write(section, knowledge=[…]) and repeat until it reports expert_ready. Then advise proactively:
+explain the concepts that matter for their work and what they change, raise the decisions they have not made
+yet, propose the whole pipeline step by step with the source behind each step, and check their plan or schema
+with review_plan. Reuse what an earlier topic already learned (notebook_read(query=…)).
+
 Answer like an expert: lead with the few strongest options, each with its measured gain (number, metric,
 conditions, source), its cost, whether it needs training, code availability and how to plug it in. If nothing
 measured beats the baseline, say so and give the experiment that would decide it.
@@ -196,6 +205,47 @@ def _save_candidates(db: Database, section: str, results: list[dict]) -> list[st
             return res
         saved.append(r["id"])
     return saved
+
+
+@mcp.tool()
+def study_topic(topic: str, task: str | None = None, terms: list[str] | None = None, kinds: list[str] | None = None,
+                read: int = 10, section: str | None = None, depth: str = "normal") -> dict:
+    """Learn a field like a specialist before advising on practical work in it (an annotation schema, a dataset,
+    training, evaluation, a pipeline). Splits the topic into facets — foundations, reference datasets / systems,
+    each concept in `terms`, the decisions every such project must make (from a checklist for the task kind),
+    practices, pitfalls, tools — searches papers (surveys and canonical works welcome), web guides, forums and
+    repos for each, reads the best `read` sources in full and returns the passages that answer each facet, plus
+    the decisions to settle with the user. With `section`: whether its specialist knowledge is deep enough to
+    advise (expert_ready) and what is missing.
+
+    Args:
+        topic: short English name of the field, e.g. "video action annotation"
+        task: what the user is doing, in their words (picks the checklist)
+        terms: 2-5 English key concepts to learn, e.g. ["atomic actions", "temporal action segmentation"]
+        kinds: force checklists: annotation | training | evaluation | dataset | inference | generic
+        read: sources to read in full now (0-15)
+        section: the RESEARCH.md topic collecting this knowledge;  depth: quick | normal | deep
+    """
+    from kb.research.expertise import study_topic as _study
+
+    depth = depth if depth in ("quick", "normal", "deep") else "normal"
+    return _with_db(lambda db: _study(db, topic, task, terms, kinds, max(0, min(read, 15)), section, depth))
+
+
+@mcp.tool()
+def review_plan(plan: str, topic: str | None = None, section: str | None = None, kinds: list[str] | None = None,
+                depth: str = "normal") -> dict:
+    """Review the user's plan, annotation schema, label list or pipeline like a senior specialist: which decisions
+    of the task-kind checklist it does not address, plus every pitfall, practice and decision learned in
+    `section` (study_topic) to hold it against. Use it before building on a plan and whenever the user shares one.
+
+    Args:
+        plan: the plan / schema / pipeline as text (paste it whole)
+        topic: what it is for;  section: the RESEARCH.md topic with the learned knowledge
+    """
+    from kb.research.expertise import review_plan as _review
+
+    return _with_db(lambda db: _review(db, plan, topic, section, kinds, depth))
 
 
 @mcp.tool()
@@ -533,18 +583,48 @@ def notebook_write(
     append: bool = False,
     add_queries: list[str] | None = None,
     remove_papers: list[str] | None = None,
+    knowledge: list[dict] | None = None,
 ) -> dict:
     """Open or update a topic in RESEARCH.md. title + question: open a topic (title short, in the user's language;
     an existing topic with the same title is returned to build on). section: update its conclusions (summary,
-    Markdown; append=true adds to them), question, search queries, or remove sources that turned out irrelevant."""
+    Markdown; append=true adds to them), question, search queries, or remove sources that turned out irrelevant.
+    knowledge: what a specialist must know, learned from sources — [{"kind": concept | decision | practice |
+    pitfall | metric | tool, "text": "…", "sources": ["arxiv:…", "web:…"]}]; one fact per item, in the user's
+    language, with what it means for the work (a decision lists its options and when to pick each)."""
     if title:
         opened = _safe(lambda: notebook.start(title, question or "", add_queries))
-        if "error" in opened or not (summary or remove_papers):
+        if "error" in opened or not (summary or remove_papers or knowledge):
             return opened
         section, question, add_queries = opened["section"], None, None
     if not section:
         return {"error": "pass title (+ question) to open a topic, or section to update one"}
-    return _safe(lambda: notebook.write(section, summary, append, question, add_queries, remove_papers))
+    out: dict = {}
+    if summary is not None or question or add_queries or remove_papers:
+        out = _safe(lambda: notebook.write(section, summary, append, question, add_queries, remove_papers))
+        if "error" in out:
+            return out
+    if knowledge:
+        def check(db: Database) -> tuple[list[dict], list[str]]:
+            good, unknown = [], []
+            for it in knowledge:
+                if not isinstance(it, dict):
+                    continue
+                ids = []
+                for i in it.get("sources") or []:
+                    p = db.get_paper(str(i))
+                    (ids.append(p["id"]) if p else unknown.append(str(i)))
+                good.append({**it, "sources": ids})
+            db.touch({i for it in good for i in it["sources"]})
+            db.commit()
+            return good, unknown
+
+        items, unknown = _with_db(check)
+        res = _safe(lambda: notebook.add_knowledge(section, items))
+        if unknown:
+            res["unknown_sources"] = sorted(set(unknown))
+            res["note"] = "Only sources found through these tools can be cited; unknown ids were dropped."
+        return {**out, "knowledge": res} if out else res
+    return out or {"error": "nothing to change: pass summary, question, add_queries, remove_papers or knowledge"}
 
 
 @mcp.tool()
@@ -595,7 +675,10 @@ def research(topic: str, depth: str = "normal") -> str:
         "questions (all at once) and call it again with the answers — never fill gaps by guessing.\n"
         "1. notebook_read(query=…) to reuse earlier research; notebook_write(title=…, question=…) to open the topic "
         "(include the brief in the question).\n"
-        "2. research_sweep for the landscape. If the user wants a solution or an improvement over something, "
+        "2. If this is practical work in a field (annotation, dataset, training, evaluation, a pipeline), study "
+        "the field first: study_topic(topic, terms=[key concepts], section=…), read, write "
+        "notebook_write(section, knowledge=[…]) and repeat until expert_ready; check the user's plan or schema "
+        "with review_plan. research_sweep for the landscape. If the user wants a solution or an improvement over something, "
         "find_methods(goal, queries=[3-8 phrasings with different words], baselines=[what to beat]). Then focused "
         "find_papers / github_search (repos and issues) / hf_search / research_sweep(platforms=[\"web\"]). Use "
         "your own web search too and fetch the useful pages."
@@ -611,6 +694,8 @@ def research(topic: str, depth: str = "normal") -> str:
         "5. notebook_add_source per source (what it says, numbers with conditions and where they come from, "
         "limitations, applicability), then notebook_write(section, summary=…) with conclusions and a concrete "
         "recommendation, citing source ids.\n"
+        "Advise as a specialist: explain the concepts the user needs, raise the decisions they have not made, and "
+        "propose the full pipeline step by step with the source behind each step.\n"
         "Write the notes in the language of the request. Finish with a short answer and the path of RESEARCH.md: "
         "the 2-5 strongest options first, each with its measured gain (number, metric, conditions, source), cost "
         "(extra model calls / speed / memory), training needed or not, code, and how to integrate it. No filler, "

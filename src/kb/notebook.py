@@ -7,6 +7,8 @@ markers (invisible when rendered) and leaves everything else alone:
     <!-- research:section id="…" --> … <!-- /research:section -->         one topic
       <!-- research:header {json} --> … <!-- /research:header -->        question, queries, dates (regenerated)
       <!-- research:summary --> … <!-- /research:summary -->             conclusions, written by the agent
+      <!-- research:playbook --> … <!-- /research:playbook -->           what a specialist knows: concepts, decisions,
+                                                                          practices, pitfalls — each with its sources
       <!-- research:paper id="…" --> … <!-- /research:paper -->          one paper: generated title line + notes
 
 Writes are atomic (temp file + rename) and serialised with a lock file, so two agents cannot interleave.
@@ -34,7 +36,10 @@ LABELS = {
                      "dataset": "датасет HF", "space": "Space HF", "web": "страница", "hn": "Hacker News",
                      "so": "Stack Overflow"},
            "stars": "★", "downloads": "загрузок", "pushed": "коммит", "upd": "обновлено", "state": "статус",
-           "merged": "влит"},
+           "merged": "влит", "playbook": "Знания специалиста", "sources": "источники",
+           "knowledge": {"concept": "Понятия", "decision": "Решения и компромиссы", "practice": "Практики",
+                         "pitfall": "Ошибки и ловушки", "metric": "Метрики и контроль качества",
+                         "tool": "Инструменты"}},
     "en": {"title": "Research", "intro": "Papers and conclusions by topic. Maintained by the research MCP; edit freely — "
                                          "keep the `<!-- research:… -->` markers.",
            "toc_head": "| Topic | Question | Papers | Updated |", "question": "Question", "queries": "Search queries",
@@ -44,13 +49,17 @@ LABELS = {
                      "dataset": "HF dataset", "space": "HF space", "web": "page", "hn": "Hacker News",
                      "so": "Stack Overflow"},
            "stars": "★", "downloads": "downloads", "pushed": "last commit", "upd": "updated", "state": "state",
-           "merged": "merged"},
+           "merged": "merged", "playbook": "Specialist knowledge", "sources": "sources",
+           "knowledge": {"concept": "Concepts", "decision": "Decisions and trade-offs", "practice": "Practices",
+                         "pitfall": "Pitfalls", "metric": "Metrics and quality control", "tool": "Tools"}},
 }
+KNOWLEDGE_KINDS = ("concept", "decision", "practice", "pitfall", "metric", "tool")
 
 SECTION_RE = re.compile(r'<!-- research:section id="(?P<id>[^"]+)" -->(?P<body>.*?)<!-- /research:section -->', re.DOTALL)
 HEADER_RE = re.compile(r"<!-- research:header (?P<meta>\{.*?\}) -->(?P<body>.*?)<!-- /research:header -->", re.DOTALL)
 SUMMARY_RE = re.compile(r"<!-- research:summary -->(?P<body>.*?)<!-- /research:summary -->", re.DOTALL)
 PAPER_RE = re.compile(r'<!-- research:paper id="(?P<id>[^"]+)" -->(?P<body>.*?)<!-- /research:paper -->', re.DOTALL)
+PLAYBOOK_RE = re.compile(r"<!-- research:playbook -->(?P<body>.*?)<!-- /research:playbook -->", re.DOTALL)
 TOC_RE = re.compile(r"<!-- research:toc -->.*?<!-- /research:toc -->", re.DOTALL)
 TITLE_RE = re.compile(r"^## (.+)$", re.MULTILINE)
 
@@ -128,8 +137,39 @@ def _sections(text: str) -> list[dict[str, Any]]:
             "created": meta.get("created"), "updated": meta.get("updated"),
             "papers": [p.group("id") for p in PAPER_RE.finditer(body)],
             "summary": _summary_text(s.group("body") if s else ""), "span": m.span(), "body": body,
+            "knowledge": _parse_playbook(body),
         })
     return out
+
+
+def _parse_playbook(body: str) -> dict[str, list[dict[str, Any]]]:
+    """Items under each kind heading: "- text — sources: `id`, `id`"."""
+    m = PLAYBOOK_RE.search(body)
+    out: dict[str, list[dict[str, Any]]] = {k: [] for k in KNOWLEDGE_KINDS}
+    if not m:
+        return out
+    by_heading = {v.lower(): k for L in LABELS.values() for k, v in L["knowledge"].items()}
+    kind = None
+    for line in m.group("body").splitlines():
+        if line.startswith("#### "):
+            kind = by_heading.get(line[5:].strip().lower())
+        elif kind and line.startswith("- "):
+            text, _, tail = line[2:].rpartition(" — ")
+            ids = re.findall(r"`([^`]+)`", tail)
+            out[kind].append({"text": (text if ids else line[2:]).strip(), "sources": ids})
+    return out
+
+
+def _playbook_block(items: dict[str, list[dict[str, Any]]]) -> str:
+    L = labels()
+    parts = [f"### {L['playbook']}", "<!-- research:playbook -->"]
+    for kind in KNOWLEDGE_KINDS:
+        if items.get(kind):
+            parts.append(f"#### {L['knowledge'][kind]}")
+            parts += [f"- {it['text']} — {L['sources']}: " + ", ".join(f"`{i}`" for i in it["sources"])
+                      for it in items[kind]]
+    parts.append("<!-- /research:playbook -->")
+    return "\n".join(parts)
 
 
 def _summary_text(raw: str) -> str:
@@ -239,7 +279,12 @@ def read_section(section: str) -> dict[str, Any]:
     text = _read(notebook_path())
     s = _find(text, section)
     return {k: s[k] for k in ("id", "title", "question", "queries", "created", "updated", "papers")} | {
-        "markdown": s["body"].strip()}
+        "knowledge_counts": {k: len(v) for k, v in s["knowledge"].items()}, "markdown": s["body"].strip()}
+
+
+def knowledge(section: str) -> dict[str, Any]:
+    s = _find(_read(notebook_path()), section)
+    return {"section": s["id"], "papers": s["papers"], "knowledge": s["knowledge"]}
 
 
 def search(query: str, limit: int = 10) -> list[dict[str, Any]]:
@@ -251,6 +296,7 @@ def search(query: str, limit: int = 10) -> list[dict[str, Any]]:
     for s in _sections(_read(notebook_path())):
         blocks = [("summary", "", s["summary"])] + [("paper", p.group("id"), p.group("body"))
                                                     for p in PAPER_RE.finditer(s["body"])]
+        blocks += [("knowledge", "", f"[{kind}] {it['text']}") for kind, items in s["knowledge"].items() for it in items]
         head = f"{s['title']} {s['question']} {' '.join(s['queries'])}".lower()
         for kind, pid, body in blocks:
             low = body.lower()
@@ -267,7 +313,11 @@ def cited_ids() -> set[str]:
     path = notebook_path()
     if not path.exists():
         return set()
-    return {p.group("id") for p in PAPER_RE.finditer(path.read_text(encoding="utf-8"))}
+    text = path.read_text(encoding="utf-8")
+    ids = {p.group("id") for p in PAPER_RE.finditer(text)}
+    for m in PLAYBOOK_RE.finditer(text):
+        ids.update(re.findall(r"`([^`\s]+:[^`\s]+)`", m.group("body")))
+    return ids
 
 
 def sections_with(paper_id: str) -> list[str]:
@@ -360,3 +410,54 @@ def write(section: str, summary: str | None = None, append: bool = False, questi
         text = _with_toc(_replace_section(text, s, _touch(body)))
         _write(path, text)
     return {"status": "updated", "section": s["id"], "changed": changed}
+
+
+def _norm(text: str) -> str:
+    return " ".join(re.findall(r"\w+", text.lower()))[:90]
+
+
+def add_knowledge(section: str, items: list[dict[str, Any]]) -> dict[str, Any]:
+    """Add what a specialist must know (concepts, decisions, practices, pitfalls, metrics, tools) to a topic.
+    Every item cites the sources it comes from; an item already there (same opening words) is not repeated."""
+    path = notebook_path()
+    with _locked(path):
+        text = _read(path)
+        s = _find(text, section)
+        current = s["knowledge"]
+        added, skipped = 0, []
+        for it in items:
+            kind = str(it.get("kind", "")).strip().lower()
+            body = " ".join(str(it.get("text", "")).split()).replace(" — ", " – ")
+            ids = [str(i).strip() for i in it.get("sources") or [] if str(i).strip()]
+            if kind not in KNOWLEDGE_KINDS:
+                skipped.append(f"{body[:40]!r}: kind must be one of {', '.join(KNOWLEDGE_KINDS)}")
+            elif len(body) < 15:
+                skipped.append(f"{body[:40]!r}: too short — state the fact and what it means for the work")
+            elif not ids:
+                skipped.append(f"{body[:40]!r}: no sources — cite the ids it comes from")
+            elif any(_norm(body) == _norm(x["text"]) for x in current[kind]):
+                skipped.append(f"{body[:40]!r}: already there")
+            else:
+                current[kind].append({"text": body, "sources": list(dict.fromkeys(ids))})
+                added += 1
+        if added:
+            body = s["body"]
+            block = _playbook_block(current)
+            m = PLAYBOOK_RE.search(body)
+            if m:   # replace it together with its heading line
+                start = m.start()
+                for L in LABELS.values():
+                    if body[:start].endswith(f"### {L['playbook']}\n"):
+                        start -= len(f"### {L['playbook']}\n")
+                body = body[:start] + block + body[m.end():]
+            else:   # right before the sources list (or the first source), else at the end
+                at = body.find(f"\n### {labels()['papers']}")
+                if at < 0:
+                    first = PAPER_RE.search(body)
+                    at = first.start() - 1 if first else len(body.rstrip())
+                body = body[:at].rstrip() + "\n\n" + block + "\n\n" + body[at:].lstrip("\n")
+            text = _with_toc(_replace_section(text, s, _touch(body)))
+            _write(path, text)
+    counts = {k: len(v) for k, v in current.items()}
+    return {"status": "updated" if added else "nothing added", "section": s["id"], "added": added,
+            "skipped": skipped, "knowledge_counts": counts}

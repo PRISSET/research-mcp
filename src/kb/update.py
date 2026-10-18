@@ -139,9 +139,28 @@ def _record(info: dict[str, str]) -> None:
         pass
 
 
+def refresh_rules() -> list[str]:
+    """Rewrite the rules block where the user installed it (--agent-rules); never add it anywhere new."""
+    from kb import rules
+
+    done = []
+    for f in ("~/.claude/CLAUDE.md", "~/.codex/AGENTS.md"):
+        p = Path(f).expanduser()
+        try:
+            if p.exists() and rules.START in p.read_text(encoding="utf-8"):
+                rules.install(p)
+                done.append(str(p))
+        except OSError:
+            pass
+    return done
+
+
 def update_and_restart() -> None:
     """Called first thing in the server's main(): after an update, re-exec so the new code is what runs."""
-    if os.environ.get("KB_AUTO_UPDATE", "1") == "0" or os.environ.get("KB_UPDATED"):
+    if os.environ.get("KB_UPDATED"):   # the new code after an update: its agent rules replace the old block
+        refresh_rules()
+        return
+    if os.environ.get("KB_AUTO_UPDATE", "1") == "0":
         return
     info = check()
     if info["status"] != "updated":

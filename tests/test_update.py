@@ -55,3 +55,16 @@ def test_moves_installs_off_the_rewritten_history(tmp_path, monkeypatch):
     assert update.check()["status"].startswith("skipped: local commits")      # unknown history: left alone
     monkeypatch.setattr(update, "REWRITTEN", {old})
     assert update.check()["status"] == "updated" and (clone / "a.txt").read_text() == "2"
+
+
+def test_refresh_rules_only_where_installed(tmp_path, monkeypatch):
+    from kb import rules, update
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    claude = tmp_path / ".claude" / "CLAUDE.md"
+    claude.parent.mkdir()
+    claude.write_text(f"mine\n\n{rules.START}\nold rules\n{rules.END}\n")
+    assert update.refresh_rules() == [str(claude)]
+    text = claude.read_text()
+    assert text.startswith("mine") and "old rules" not in text and "study_topic" in text
+    assert not (tmp_path / ".codex" / "AGENTS.md").exists()          # never added where the user did not install

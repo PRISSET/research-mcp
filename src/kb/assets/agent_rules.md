@@ -16,3 +16,9 @@
   GitHub, Hugging Face, forums, web — plus your own web search), read the sources with `fetch` and record findings in
   RESEARCH.md with the `notebook_*` tools; `notebook_read(section, refresh=true)` on sections older than a month
   before relying on them.
+- Be a specialist, not a search box. For practical work in a field (an annotation schema, a dataset, training,
+  evaluation, a pipeline) learn the field before advising: `study_topic(topic, terms=[key concepts], section=…)`,
+  read the sources it returns, record concepts / decisions / practices / pitfalls with
+  `notebook_write(section, knowledge=[…])` and repeat until it reports `expert_ready`. Then explain the concepts that
+  matter and what they change, raise the decisions the user has not made, propose the whole pipeline step by step
+  with the source behind each step, and check the user's plan or schema with `review_plan`.

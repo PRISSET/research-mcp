@@ -60,6 +60,14 @@ FOLLOW_UPS = [
      r"(\d+\s*%|\bno slowdown|без замедлен|same (speed|nfe)|той же скорост|\d+\s*(s|с|сек|it/s|шаг|steps?)\b)",
      {"ru": "Сколько замедления допустимо в цифрах (0 %, до 10 %…) и при каком числе шагов сейчас?",
       "en": "How much slowdown is acceptable in numbers (0 %, up to 10 %...) and at how many steps now?"}),
+    (r"(annotat|label|разметк|размеч|caption|подпис|schema|схем)",
+     r"(train|обуч|lora|eval|оцен|inference|инференс|prompt|промпт|downstream)",
+     {"ru": "Для чего разметка: какую модель она будет обучать или оценивать и в каком виде метки нужны на выходе?",
+      "en": "What are the labels for: which model will they train or evaluate, and in what form are they consumed?"}),
+    (r"(annotat|label|разметк|размеч)",
+     r"(\d+\s*(clips?|клип|videos?|видео|images?|изображ|items?|примеров|samples?)|annotators?|разметчик|сам\b|myself)",
+     {"ru": "Сколько единиц размечать и кто размечает (вы сами, несколько людей, модель с проверкой человеком)?",
+      "en": "How many items, and who labels them (you alone, several people, a model checked by people)?"}),
     (r"\b(audio|звук|аудио|speech|речь|voice|голос)",
      r"(clarity|intelligib|разборчив|артефакт|artifact|lip[- ]?sync|синхрон|шум|noise|\bmos\b|\bwer\b|тембр|timbre)",
      {"ru": "Что именно важно в звуке: разборчивость речи, шумы и артефакты, синхронность с видео?",
@@ -104,8 +112,10 @@ def research_brief(topic: str, goal: str | None = None, environment: str | None 
         "optional_questions": optional if not ready else [],
         "brief": brief,
         "next": (
-            "Ready: notebook_write(title=…, question=<goal + this brief>), then search. Put success_metric and "
-            "constraints into every judgement: drop candidates that break a constraint."
+            "Ready: notebook_write(title=…, question=<goal + this brief>), then search. If this is practical work in "
+            "a field (annotation, dataset, training, evaluation, a pipeline), learn the field first with "
+            "study_topic(topic, terms=…, section=…) until expert_ready. Put success_metric and constraints into "
+            "every judgement: drop candidates that break a constraint."
             if ready else
             "Ask the user these questions now (all at once; with AskUserQuestion if you have it), offering likely "
             "options where you can. Do not guess the answers and do not start searching. Then call research_brief "
