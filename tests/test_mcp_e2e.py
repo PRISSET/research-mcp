@@ -41,7 +41,9 @@ async def _run(env: dict[str, str]) -> dict:
             review = _json(await s.call_tool("review_plan", {
                 "plan": "Разметка клипов: метки из закрытого списка, размечаю один",
                 "section": started["section"]}))
-            return {"learned": learned, "review": review, "tools": tools, "prompt": prompt.messages[0].content.text, "added": added, "invented": invented,
+            tried = _json(await s.call_tool("notebook_write", {"section": started["section"], "experiment": {
+                "change": "GPTQ 4-bit", "result": "-1.2 MMLU", "verdict": "worse"}}))
+            return {"tried": tried, "learned": learned, "review": review, "tools": tools, "prompt": prompt.messages[0].content.text, "added": added, "invented": invented,
                     "fix": fix.messages[0].content.text, "overview": overview, "info": info, "nothing": nothing}
 
 
@@ -63,6 +65,7 @@ def test_research_flow_over_stdio(tmp_path):
     assert "error" in out["invented"]                                      # no invented citations
     assert out["overview"]["sections"][0]["papers"] == 1 and out["overview"]["local_base"]["papers"] == 1
     assert out["info"]["in_notebook"] == ["квантование-llm"] and "error" in out["nothing"]
+    assert out["tried"]["status"] == "logged" and out["tried"]["failed_or_worse"] == ["GPTQ 4-bit"]
     assert out["learned"]["added"] == 1 and out["learned"]["unknown_sources"] == ["arxiv:0000.00000"]
     assert out["review"]["learned"]["practice"][0]["sources"] == ["arxiv:2210.17323"]
     assert "agreement" in {g["id"] for g in out["review"]["not_addressed"]}

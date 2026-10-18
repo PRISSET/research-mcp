@@ -83,7 +83,15 @@ def test_old_database_is_migrated(tmp_path):
         database.close()
 
 
+def test_semantic_scholar_only_with_a_key(monkeypatch):
+    monkeypatch.delenv("S2_API_KEY", raising=False)
+    assert "s2" not in find_mod.default_sources()
+    monkeypatch.setenv("S2_API_KEY", "k")
+    assert "s2" in find_mod.default_sources()
+
+
 def test_find_papers_merges_ranks_and_survives_a_dead_source(db, monkeypatch):
+    monkeypatch.setenv("S2_API_KEY", "k")
     def fake(name, query, limit, year_from):
         if name == "s2":
             raise RuntimeError("429")

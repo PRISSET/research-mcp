@@ -15,7 +15,7 @@ T = TypeVar("T")
 
 INSTRUCTIONS = """\
 Research engine for ML and any other field: papers (OpenAlex, arXiv, Semantic Scholar), GitHub, Hugging Face,
-forums and the web, read in full, graded by evidence (A official ... D disputed), with findings kept in one
+Civitai, ComfyUI nodes, forums and the web, read in full, graded by evidence (A official ... D disputed), with findings kept in one
 Markdown file, RESEARCH.md. What it reads is cached locally and searchable (search_fulltext).
 
 Rules that matter most:
@@ -27,8 +27,9 @@ Rules that matter most:
   barely fits — offer FP8 / INT8 (near-lossless, half the memory) and state the quality cost. 4-bit and below
   only when 8-bit cannot fit. Will it run or train on their hardware: estimate_resources.
 - A command, install, build or run failed: diagnose_error with the exact error text BEFORE guessing at fixes.
-- If you have your own web search / fetch tools, use them too, and pass useful pages to fetch so they are cached
-  and can be cited in the notebook.
+- Your own web search is the main web search (Reddit, blogs, news): the built-in one is only good with a Tavily /
+  Brave key. Pass useful pages to fetch so they are cached and can be cited in the notebook. When a result says
+  an optional key would help, tell the user once (`uv run kb keys`).
 
 Research workflow: research_brief (ask the user what it reports missing) -> notebook_read(query=…) to reuse
 earlier work -> notebook_write(title=…, question=…) to open a topic -> research_sweep / find_methods / find_papers
@@ -44,6 +45,10 @@ with notebook_write(section, knowledge=[…]) and repeat until it reports expert
 explain the concepts that matter for their work and what they change, raise the decisions they have not made
 yet, propose the whole pipeline step by step with the source behind each step, and check their plan or schema
 with review_plan. Reuse what an earlier topic already learned (notebook_read(query=…)).
+
+Remember what was tried: when the user reports how something went (speed, quality, an error), log it with
+notebook_write(section, experiment={change, settings, result, verdict}); before suggesting, read the topic's
+experiments (notebook_read(section)) and never re-propose what already failed without saying what is different.
 
 Answer like an expert: lead with the few strongest options, each with its measured gain (number, metric,
 conditions, source), its cost, whether it needs training, code availability and how to plug it in. If nothing
@@ -87,13 +92,15 @@ def _unknown(source_id: str) -> dict[str, str]:
 @mcp.tool()
 def research_sweep(query: str, platforms: list[str] | None = None, per_platform: int = 6) -> dict:
     """Search every platform at once — start here when planning, choosing a model / library / approach, or entering
-    an unfamiliar topic: papers, Hugging Face models, GitHub repos and issues, web pages (Brave / Tavily with a key,
-    otherwise DuckDuckGo) and forum threads (Hacker News, Stack Overflow), each graded. Then fetch the promising ones.
+    an unfamiliar topic: papers, Hugging Face models, GitHub repos and issues, community (Hugging Face discussions of
+    the matching models, Civitai checkpoints / LoRAs and ComfyUI nodes for generative topics, Hacker News) and the
+    web (with a Tavily / Brave key; otherwise ready queries for your own web search), each graded. Then fetch the
+    promising ones.
 
     Args:
         query: short English query, e.g. "talking head lip sync"
-        platforms: subset of ["papers", "models", "repos", "issues", "web", "forums"] (default: all); e.g.
-            ["web"] for a plain web search, ["forums"] for community experience
+        platforms: subset of ["papers", "models", "repos", "issues", "community", "web"] (default: all), or community
+            parts alone: "discussions", "civitai", "nodes", "hn"; ["web"] forces the built-in web search
         per_platform: results per platform (3-15)
     """
     from kb.research.sweep import research_sweep as _sweep
@@ -141,7 +148,7 @@ def find_papers(query: str | None = None, limit: int = 15, year_from: int | None
 
     Args:
         query: focused English query (several narrow queries beat one broad one)
-        sources: subset of ["openalex", "arxiv", "s2", "local"] (default: all)
+        sources: subset of ["openalex", "arxiv", "s2", "local"] (default: all; "s2" only with S2_API_KEY)
         paper_id: e.g. "arxiv:2211.17192" or "doi:10.1038/..."
     """
     if paper_id:
@@ -150,10 +157,10 @@ def find_papers(query: str | None = None, limit: int = 15, year_from: int | None
         return _with_db(lambda db: follow_citations(db, paper_id, direction, min(limit, 50)))
     if not query:
         return {"error": "pass query, or paper_id to follow citations"}
-    from kb.research.find import SOURCES
+    from kb.research.find import SOURCES, default_sources
     from kb.research.find import find_papers as _find
 
-    use = tuple(s for s in (sources or SOURCES) if s in SOURCES) or SOURCES
+    use = tuple(s for s in (sources or default_sources()) if s in SOURCES) or default_sources()
     return _with_db(lambda db: _find(db, query, min(limit, 40), year_from, use, on_paper=notebook.sections_with))
 
 
@@ -174,6 +181,12 @@ def find_methods(goal: str, queries: list[str] | None = None, baselines: list[st
 
     def run(db: Database) -> dict:
         out = _find(db, goal, queries, baselines, max(1, min(years, 6)), min(limit, 25))
+        if section:
+            tried = _safe(lambda: notebook.read_section(section)).get("experiments")
+            if tried:
+                out["already_tried"] = tried
+                out["next"] = ("already_tried lists what the user ran in this topic: do not propose what failed or "
+                               "did not help again unless the settings differ in a way that matters. ") + out["next"]
         if section and out.get("results"):
             out["saved_to_notebook"] = _save_candidates(db, section, out["results"][:max(0, min(save_top, 12))])
         return out
@@ -333,7 +346,7 @@ def fetch(url: str | None = None, urls: list[str] | None = None, paper_ids: list
           refresh: bool = False) -> dict:
     """Read sources and cache them for search_fulltext. url / urls (up to 12, read in parallel): any page — docs,
     blogs, PDFs, GitHub repos (README + release notes), issue / PR threads (maintainers marked), Hugging Face
-    model cards, arXiv papers, Hacker News threads; returns the text (12k chars, 5k each for several), an outline
+    model cards and discussions, Civitai models, arXiv papers, Hacker News threads; returns the text (12k chars, 5k each for several), an outline
     and the source id for notebook_add_source. paper_ids (up to 10, from find_papers): full texts from arXiv or an
     open-access PDF, split into passages with their numbers extracted."""
     out: dict = {}
@@ -584,23 +597,35 @@ def notebook_write(
     add_queries: list[str] | None = None,
     remove_papers: list[str] | None = None,
     knowledge: list[dict] | None = None,
+    experiment: dict | None = None,
 ) -> dict:
     """Open or update a topic in RESEARCH.md. title + question: open a topic (title short, in the user's language;
     an existing topic with the same title is returned to build on). section: update its conclusions (summary,
     Markdown; append=true adds to them), question, search queries, or remove sources that turned out irrelevant.
     knowledge: what a specialist must know, learned from sources — [{"kind": concept | decision | practice |
     pitfall | metric | tool, "text": "…", "sources": ["arxiv:…", "web:…"]}]; one fact per item, in the user's
-    language, with what it means for the work (a decision lists its options and when to pick each)."""
+    language, with what it means for the work (a decision lists its options and when to pick each).
+    experiment: log one try the user (or you) ran — {"change": "what was tried", "settings": "…", "result": "what
+    came out, with numbers", "verdict": better | worse | same | failed | unclear}; read them back before suggesting
+    anything so nothing that already failed is proposed again."""
     if title:
         opened = _safe(lambda: notebook.start(title, question or "", add_queries))
-        if "error" in opened or not (summary or remove_papers or knowledge):
+        if "error" in opened or not (summary or remove_papers or knowledge or experiment):
             return opened
         section, question, add_queries = opened["section"], None, None
     if not section:
         return {"error": "pass title (+ question) to open a topic, or section to update one"}
     out: dict = {}
+    if experiment:
+        e = experiment
+        out["experiment"] = _safe(lambda: notebook.add_experiment(
+            section, str(e.get("change", "")), str(e.get("result", "")), str(e.get("verdict", "")),
+            str(e.get("settings", "")), e.get("date")))
+        if "error" in out["experiment"] or not (summary is not None or question or add_queries or remove_papers
+                                                 or knowledge):
+            return out["experiment"]
     if summary is not None or question or add_queries or remove_papers:
-        out = _safe(lambda: notebook.write(section, summary, append, question, add_queries, remove_papers))
+        out = {**out, **_safe(lambda: notebook.write(section, summary, append, question, add_queries, remove_papers))}
         if "error" in out:
             return out
     if knowledge:
@@ -624,7 +649,8 @@ def notebook_write(
             res["unknown_sources"] = sorted(set(unknown))
             res["note"] = "Only sources found through these tools can be cited; unknown ids were dropped."
         return {**out, "knowledge": res} if out else res
-    return out or {"error": "nothing to change: pass summary, question, add_queries, remove_papers or knowledge"}
+    return out or {"error": "nothing to change: pass summary, question, add_queries, remove_papers, knowledge or "
+                            "experiment"}
 
 
 @mcp.tool()

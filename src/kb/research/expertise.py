@@ -7,7 +7,7 @@ boundaries, agreement checks), the practices of the reference datasets and the u
      foundations, reference datasets / systems, each concept the agent names, and the decisions on the checklist
      of the task kind (annotation, training, evaluation, dataset, inference);
   2. every facet is searched (papers ranked by meaning and citations — surveys and canonical dataset papers are
-     wanted here, unlike in find_methods; web guides; forums; repos);
+     wanted here, unlike in find_methods; web guides; repos);
   3. the best sources are read in full right away and the passages that answer each facet are returned;
   4. what the agent learns goes into the topic's "specialist knowledge" in RESEARCH.md with its sources, and
      the call reports whether that knowledge is deep enough to advise (`expert_ready`), like research_brief does
@@ -329,7 +329,7 @@ def facets(topic: str, terms: list[str] | None, checks: list[Check]) -> list[dic
         {"facet": "practice", "question": f"best practices and lessons learned for {t}",
          "papers": [(f"{t} lessons learned", "rel")], "web": [f"{t} best practices"]},
         {"facet": "pitfalls", "question": f"common mistakes, failure cases and pitfalls of {t}",
-         "web": [f"{t} mistakes to avoid"], "forums": [t]},
+         "papers": [(f"{t} challenges limitations", "rel")], "web": [f"{t} mistakes to avoid"]},
         {"facet": "tools", "question": f"tools and recent automated methods for {t}", "repos": [t],
          "papers": [(t, "recent")]},
     ]
@@ -360,8 +360,10 @@ def _with_own_db(fn: Any) -> Any:
 
 
 def _search_all(fs: list[dict[str, Any]]) -> tuple[dict[tuple[int, str, str], Any], dict[str, str]]:
-    from kb.research.platforms import forum_search, github_search
+    from kb.research.platforms import github_search
     from kb.research.web import web_search
+
+    web = bool(os.environ.get("TAVILY_API_KEY") or os.environ.get("BRAVE_API_KEY"))
 
     jobs: dict[tuple[int, str, str], Any] = {}
     Database().close()   # create / migrate once before the threads
@@ -369,10 +371,8 @@ def _search_all(fs: list[dict[str, Any]]) -> tuple[dict[tuple[int, str, str], An
     for i, f in enumerate(fs):
         for q, mode in f.get("papers", []):
             jobs[(i, "papers", f"{q} [{mode}]")] = pool.submit(_openalex, q, mode)
-        for q in f.get("web", []):
+        for q in f.get("web", []) if web else []:
             jobs[(i, "web", q)] = pool.submit(_with_own_db(lambda db, q: web_search(db, q, 6)), q)
-        for q in f.get("forums", []):
-            jobs[(i, "forums", q)] = pool.submit(_with_own_db(lambda db, q: forum_search(db, q, limit=4)), q)
         for q in f.get("repos", []):
             jobs[(i, "repos", q)] = pool.submit(_with_own_db(lambda db, q: github_search(db, q, "repos", limit=5)), q)
     done, _ = wait(jobs.values(), timeout=SEARCH_DEADLINE)
@@ -394,8 +394,6 @@ def _search_all(fs: list[dict[str, Any]]) -> tuple[dict[tuple[int, str, str], An
 def _hits(res: Any, platform: str) -> list[dict[str, Any]]:
     if not isinstance(res, dict):
         return []
-    if platform == "forums":
-        return [h for site in ("hackernews", "stackoverflow") if isinstance(res.get(site), list) for h in res[site]]
     return res.get("results") or [] if isinstance(res.get("results"), list) else []
 
 
@@ -592,12 +590,15 @@ def study_topic(db: Database, topic: str, task: str | None = None, terms: list[s
             out["playbook"] = readiness(db, section, depth)
         except Exception as e:   # notebook errors are reported, not fatal
             out["playbook"] = {"error": str(e)}
+    if not (os.environ.get("TAVILY_API_KEY") or os.environ.get("BRAVE_API_KEY")):
+        out["web_for_your_own_search"] = [q for f in fs for q in f.get("web", [])] + [f"{topic} site:reddit.com"]
     failed = [k for k, v in status.items() if v != "ok"]
     if failed:
         out["search_problems"] = failed[:12]
     out["next"] = (
-        "You are building expertise, not a reading list. 1) Read the passages (the built-in web search is weak: "
-        "use your own web search for practitioner guides, annotation-tool docs and forum threads and fetch them); open the strongest with "
+        "You are building expertise, not a reading list. 1) Read the passages; run web_for_your_own_search (if "
+        "present) in your own web search for practitioner guides, tool docs and forum threads and fetch the good "
+        "ones; open the strongest with "
         "search_fulltext(chunk_id=…, window=2); fetch more sources for facets with no passages (several facets "
         "per call: fetch(paper_ids=[…]) / fetch(urls=[…])), surveys and the reference-dataset papers first. "
         "2) Write what you learned with notebook_write(section, knowledge=[{kind, text, sources}]) — kinds: concept "
@@ -629,6 +630,9 @@ def review_plan(db: Database, plan: str, topic: str | None = None, section: str 
         try:
             kn = notebook.knowledge(section)["knowledge"]
             out["learned"] = {k: kn[k] for k in ("pitfall", "practice", "decision", "metric") if kn[k]}
+            tried = notebook.read_section(section)["experiments"]
+            if tried:
+                out["already_tried"] = tried
             out["playbook"] = readiness(db, section, depth)
         except notebook.NotebookError as e:
             out["learned"] = {"error": str(e)}
@@ -637,7 +641,7 @@ def review_plan(db: Database, plan: str, topic: str | None = None, section: str 
                           "study_topic(topic, section=…) first so the review rests on sources.")
     out["next"] = (
         "Review like a senior specialist: go through not_addressed and every learned pitfall / practice against the "
-        "plan; for addressed items check the plan does it well, not just mentions it. Report the 3-7 issues that "
+        "plan (and already_tried: steps that failed before are red flags); for addressed items check the plan does it well, not just mentions it. Report the 3-7 issues that "
         "most affect the result first, each with the concrete fix (rewritten labels / fields / rule / step) and the "
         "source it rests on; ask the user only what the plan cannot answer. Then give the corrected plan or schema "
         "in full.")

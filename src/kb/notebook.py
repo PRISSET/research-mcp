@@ -9,6 +9,7 @@ markers (invisible when rendered) and leaves everything else alone:
       <!-- research:summary --> … <!-- /research:summary -->             conclusions, written by the agent
       <!-- research:playbook --> … <!-- /research:playbook -->           what a specialist knows: concepts, decisions,
                                                                           practices, pitfalls — each with its sources
+      <!-- research:experiments --> … <!-- /research:experiments -->     what was tried and what came of it (a table)
       <!-- research:paper id="…" --> … <!-- /research:paper -->          one paper: generated title line + notes
 
 Writes are atomic (temp file + rename) and serialised with a lock file, so two agents cannot interleave.
@@ -34,9 +35,13 @@ LABELS = {
            "no_summary": "_Выводов пока нет._", "grade": "оценка", "citations": "цит.", "empty": "_Пока пусто._",
            "kinds": {"paper": "статья", "repo": "репозиторий", "issue": "issue", "pr": "pull request", "model": "модель HF",
                      "dataset": "датасет HF", "space": "Space HF", "web": "страница", "hn": "Hacker News",
-                     "so": "Stack Overflow"},
+                     "so": "Stack Overflow", "civitai": "модель Civitai", "node": "нода ComfyUI",
+                     "discussion": "обсуждение HF"},
            "stars": "★", "downloads": "загрузок", "pushed": "коммит", "upd": "обновлено", "state": "статус",
            "merged": "влит", "playbook": "Знания специалиста", "sources": "источники",
+           "experiments": "Эксперименты", "exp_head": "| Дата | Что меняли | Настройки | Результат | Итог |",
+           "verdicts": {"better": "лучше", "worse": "хуже", "same": "без разницы", "failed": "не сработало",
+                        "unclear": "непонятно"},
            "knowledge": {"concept": "Понятия", "decision": "Решения и компромиссы", "practice": "Практики",
                          "pitfall": "Ошибки и ловушки", "metric": "Метрики и контроль качества",
                          "tool": "Инструменты"}},
@@ -47,9 +52,13 @@ LABELS = {
            "no_summary": "_No conclusions yet._", "grade": "grade", "citations": "citations", "empty": "_Nothing yet._",
            "kinds": {"paper": "paper", "repo": "repo", "issue": "issue", "pr": "pull request", "model": "HF model",
                      "dataset": "HF dataset", "space": "HF space", "web": "page", "hn": "Hacker News",
-                     "so": "Stack Overflow"},
+                     "so": "Stack Overflow", "civitai": "Civitai model", "node": "ComfyUI node",
+                     "discussion": "HF discussion"},
            "stars": "★", "downloads": "downloads", "pushed": "last commit", "upd": "updated", "state": "state",
            "merged": "merged", "playbook": "Specialist knowledge", "sources": "sources",
+           "experiments": "Experiments", "exp_head": "| Date | Change | Settings | Result | Verdict |",
+           "verdicts": {"better": "better", "worse": "worse", "same": "no difference", "failed": "failed",
+                        "unclear": "unclear"},
            "knowledge": {"concept": "Concepts", "decision": "Decisions and trade-offs", "practice": "Practices",
                          "pitfall": "Pitfalls", "metric": "Metrics and quality control", "tool": "Tools"}},
 }
@@ -60,6 +69,7 @@ HEADER_RE = re.compile(r"<!-- research:header (?P<meta>\{.*?\}) -->(?P<body>.*?)
 SUMMARY_RE = re.compile(r"<!-- research:summary -->(?P<body>.*?)<!-- /research:summary -->", re.DOTALL)
 PAPER_RE = re.compile(r'<!-- research:paper id="(?P<id>[^"]+)" -->(?P<body>.*?)<!-- /research:paper -->', re.DOTALL)
 PLAYBOOK_RE = re.compile(r"<!-- research:playbook -->(?P<body>.*?)<!-- /research:playbook -->", re.DOTALL)
+EXPERIMENTS_RE = re.compile(r"<!-- research:experiments -->(?P<body>.*?)<!-- /research:experiments -->", re.DOTALL)
 TOC_RE = re.compile(r"<!-- research:toc -->.*?<!-- /research:toc -->", re.DOTALL)
 TITLE_RE = re.compile(r"^## (.+)$", re.MULTILINE)
 
@@ -137,7 +147,7 @@ def _sections(text: str) -> list[dict[str, Any]]:
             "created": meta.get("created"), "updated": meta.get("updated"),
             "papers": [p.group("id") for p in PAPER_RE.finditer(body)],
             "summary": _summary_text(s.group("body") if s else ""), "span": m.span(), "body": body,
-            "knowledge": _parse_playbook(body),
+            "knowledge": _parse_playbook(body), "experiments": _parse_experiments(body),
         })
     return out
 
@@ -158,6 +168,24 @@ def _parse_playbook(body: str) -> dict[str, list[dict[str, Any]]]:
             ids = re.findall(r"`([^`]+)`", tail)
             out[kind].append({"text": (text if ids else line[2:]).strip(), "sources": ids})
     return out
+
+
+def _parse_experiments(body: str) -> list[dict[str, str]]:
+    m = EXPERIMENTS_RE.search(body)
+    if not m:
+        return []
+    verdict = {v: k for L in LABELS.values() for k, v in L["verdicts"].items()}
+    out = []
+    for line in m.group("body").splitlines():
+        cells = [c.strip().replace("\\|", "|") for c in re.split(r"(?<!\\)\|", line.strip())[1:-1]]
+        if len(cells) == 5 and not set(cells[0]) <= set("-: ") and re.match(r"\d{4}-\d\d-\d\d", cells[0]):
+            out.append({"date": cells[0], "change": cells[1], "settings": cells[2], "result": cells[3],
+                        "verdict": verdict.get(cells[4].strip("*").lower(), cells[4])})
+    return out
+
+
+def _cell(text: str) -> str:
+    return " ".join(str(text or "—").split()).replace("|", "\\|")
 
 
 def _playbook_block(items: dict[str, list[dict[str, Any]]]) -> str:
@@ -279,7 +307,8 @@ def read_section(section: str) -> dict[str, Any]:
     text = _read(notebook_path())
     s = _find(text, section)
     return {k: s[k] for k in ("id", "title", "question", "queries", "created", "updated", "papers")} | {
-        "knowledge_counts": {k: len(v) for k, v in s["knowledge"].items()}, "markdown": s["body"].strip()}
+        "knowledge_counts": {k: len(v) for k, v in s["knowledge"].items()}, "experiments": s["experiments"],
+        "markdown": s["body"].strip()}
 
 
 def knowledge(section: str) -> dict[str, Any]:
@@ -297,6 +326,8 @@ def search(query: str, limit: int = 10) -> list[dict[str, Any]]:
         blocks = [("summary", "", s["summary"])] + [("paper", p.group("id"), p.group("body"))
                                                     for p in PAPER_RE.finditer(s["body"])]
         blocks += [("knowledge", "", f"[{kind}] {it['text']}") for kind, items in s["knowledge"].items() for it in items]
+        blocks += [("experiment", "", f"[{e['verdict']}] {e['change']} · {e['settings']} → {e['result']}")
+                   for e in s["experiments"]]
         head = f"{s['title']} {s['question']} {' '.join(s['queries'])}".lower()
         for kind, pid, body in blocks:
             low = body.lower()
@@ -461,3 +492,42 @@ def add_knowledge(section: str, items: list[dict[str, Any]]) -> dict[str, Any]:
     counts = {k: len(v) for k, v in current.items()}
     return {"status": "updated" if added else "nothing added", "section": s["id"], "added": added,
             "skipped": skipped, "knowledge_counts": counts}
+
+
+VERDICTS = ("better", "worse", "same", "failed", "unclear")
+
+
+def add_experiment(section: str, change: str, result: str, verdict: str, settings: str = "",
+                   when: str | None = None) -> dict[str, Any]:
+    """Log one try: what was changed, with which settings, what came out and whether it helped."""
+    verdict = verdict.strip().lower()
+    if verdict not in VERDICTS:
+        raise NotebookError(f"verdict must be one of {', '.join(VERDICTS)}")
+    if len(change.strip()) < 3 or len(result.strip()) < 2:
+        raise NotebookError("experiment needs `change` (what was tried) and `result` (what came out, with numbers)")
+    path = notebook_path()
+    L = labels()
+    with _locked(path):
+        text = _read(path)
+        s = _find(text, section)
+        body = s["body"]
+        mark = {"better": "**", "failed": "", "worse": ""}.get(verdict, "")
+        row = (f"| {when or _today()} | {_cell(change)} | {_cell(settings)} | {_cell(result)} | "
+               f"{mark}{L['verdicts'][verdict]}{mark} |")
+        m = EXPERIMENTS_RE.search(body)
+        if m:
+            inner = m.group("body").rstrip("\n") + "\n" + row + "\n"
+            body = body[: m.start("body")] + inner + body[m.end("body"):]
+        else:
+            block = (f"### {L['experiments']}\n<!-- research:experiments -->\n{L['exp_head']}\n|---|---|---|---|---|\n"
+                     f"{row}\n<!-- /research:experiments -->")
+            at = body.find(f"\n### {L['papers']}")
+            if at < 0:
+                first = PAPER_RE.search(body)
+                at = first.start() - 1 if first else len(body.rstrip())
+            body = body[:at].rstrip() + "\n\n" + block + "\n\n" + body[at:].lstrip("\n")
+        text = _with_toc(_replace_section(text, s, _touch(body)))
+        _write(path, text)
+    exps = _parse_experiments(body)
+    return {"status": "logged", "section": s["id"], "experiments": len(exps),
+            "failed_or_worse": [e["change"] for e in exps if e["verdict"] in ("failed", "worse", "same")]}

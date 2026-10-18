@@ -101,6 +101,29 @@ def grade_doc(kind: str, extra: dict[str, Any], doc_id: str = "") -> dict[str, A
         reasons.append(f"score {extra.get('score')}, {'answered' if extra.get('answered') else 'no accepted answer'}")
         if not extra.get("answered"):
             flags.append("no accepted answer")
+    elif kind == "civitai":
+        dl, likes, bad = extra.get("downloads") or 0, extra.get("likes") or 0, extra.get("dislikes") or 0
+        reasons.append(f"{dl:,} downloads, {likes} likes on Civitai: a community upload")
+        if dl >= 10_000 and likes >= 10 * max(1, bad):
+            grade = "B"
+            reasons.append("broad adoption, well rated")
+        if extra.get("pickle_files") and not extra.get("safetensors"):
+            flags.append(f"pickle-only weights can execute code on load: {extra['pickle_files']}")
+        flags.append("community model: test it on your own prompts before relying on it")
+    elif kind == "node":
+        stars, dl = extra.get("stars") or 0, extra.get("downloads") or 0
+        reasons.append(f"ComfyUI node: {stars} stars, {dl} registry downloads")
+        if stars >= 300:
+            grade = "B"
+        if "Flagged" in str(extra.get("status")) or extra.get("deprecated"):
+            grade = "D"
+            flags.append(f"registry status: {extra.get('status')}{', deprecated' if extra.get('deprecated') else ''}")
+    elif kind == "discussion":
+        reasons.append(f"Hugging Face discussion on {extra.get('repo')}: {extra.get('comments_n') or 0} comments")
+        if extra.get("maintainer_replied"):
+            reasons.append("the repo owner replied")
+        else:
+            flags.append("user reports: not confirmed by the authors")
     elif kind == "hn":
         reasons.append(f"{extra.get('points')} points, {extra.get('comments')} comments: opinions, not evidence")
     return {"grade": grade, "reasons": reasons, "flags": flags}

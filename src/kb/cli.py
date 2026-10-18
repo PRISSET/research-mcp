@@ -62,6 +62,33 @@ def search(query: str, k: int = 8) -> None:
             console.print("   " + r["text"][:300].replace("\n", " "))
 
 
+keys_app = typer.Typer(help="Optional API keys (stored in ~/.config/research-mcp/keys.env)", invoke_without_command=True)
+app.add_typer(keys_app, name="keys")
+
+
+@keys_app.callback()
+def keys_list(ctx: typer.Context) -> None:
+    """Which keys are set, what each improves and where to get it."""
+    if ctx.invoked_subcommand:
+        return
+    from kb import keys
+
+    t = Table("key", "set", "improves", "get it at")
+    for k in keys.status():
+        t.add_row(k["name"], "[green]yes[/]" if k["set"] else "-", k["improves"], k["get"])
+    console.print(t)
+    console.print(f"File: {keys.path()}  ·  add: uv run kb keys set NAME VALUE  ·  then restart the agent session")
+
+
+@keys_app.command("set")
+def keys_set(name: str, value: str = typer.Argument("", help="empty removes the key")) -> None:
+    from kb import keys
+
+    if name not in keys.NAMES:
+        console.print(f"[yellow]{name} is not a known key; stored anyway[/]")
+    console.print(f"{'saved' if value else 'removed'}: {name} in {keys.set_key(name, value)} — restart the agent session")
+
+
 @app.command()
 def stats() -> None:
     """Size of the local base and the notebook."""

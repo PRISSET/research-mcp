@@ -171,6 +171,8 @@ GH_BLOB = re.compile(r"github\.com/([^/]+/[^/]+)/(?:blob|tree)/[^/]+/(.+)")
 GH_REPO = re.compile(r"github\.com/([^/?#]+/[^/?#]+)/?$")
 HF_REPO = re.compile(r"huggingface\.co/(datasets/|spaces/)?([^/?#]+/[^/?#]+)/?$")
 ARXIV = re.compile(r"arxiv\.org/(?:abs|pdf|html)/(\d{4}\.\d{4,5}|[a-z\-]+/\d{7})")
+HF_DISC = re.compile(r"huggingface\.co/(datasets/|spaces/)?([^/?#]+/[^/?#]+)/discussions/(\d+)")
+CIVITAI_MODEL = re.compile(r"civitai\.com/models/(\d+)")
 HN_ITEM = re.compile(r"news\.ycombinator\.com/item\?id=(\d+)")
 
 
@@ -236,6 +238,11 @@ def fetch_url(db: Database, url: str) -> dict[str, Any]:
         return platforms.github_read(db, m.group(1), path=m.group(2))
     if m := GH_REPO.search(url):
         return platforms.github_read(db, m.group(1))
+    if m := HF_DISC.search(url):
+        kind = {"datasets/": "datasets", "spaces/": "spaces"}.get(m.group(1) or "", "models")
+        return platforms.hf_discussion_read(db, m.group(2), int(m.group(3)), kind)
+    if m := CIVITAI_MODEL.search(url):
+        return platforms.civitai_read(db, m.group(1))
     if (m := HF_REPO.search(url)) and not url.rstrip("/").endswith(("/discussions", "/tree/main")):
         kind = {"datasets/": "dataset", "spaces/": "space"}.get(m.group(1) or "", "model")
         if m.group(2).split("/")[0] not in ("docs", "blog", "papers", "learn", "posts", "collections", "organizations"):

@@ -156,4 +156,7 @@ else
   [ "$REGISTER" = 1 ] && warn "agent '$AGENT' not found on PATH"
   echo "Not registered anywhere. Add manually: <agent> mcp add $NAME -- uv --directory \"$DIR\" run research-mcp"
 fi
+echo "Optional free keys make search better (Tavily web search, GitHub, Semantic Scholar, Civitai):"
+echo "  cd \"$DIR\" && uv run kb keys            # what each key improves and where to get it"
+echo "  uv run kb keys set TAVILY_API_KEY tvly-…   # stored in ~/.config/research-mcp/keys.env"
 exit 0

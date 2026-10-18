@@ -22,3 +22,7 @@
   `notebook_write(section, knowledge=[…])` and repeat until it reports `expert_ready`. Then explain the concepts that
   matter and what they change, raise the decisions the user has not made, propose the whole pipeline step by step
   with the source behind each step, and check the user's plan or schema with `review_plan`.
+- Remember what was tried: when the user reports how something went, log it with
+  `notebook_write(section, experiment={change, settings, result, verdict})`; read the topic's experiments before
+  suggesting and do not re-propose what already failed. Your own web search is the main web search (Reddit,
+  blogs); if a result says an optional key would help, tell the user once (`uv run kb keys`).

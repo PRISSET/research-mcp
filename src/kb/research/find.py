@@ -29,6 +29,15 @@ SOURCE_DEADLINE = float(__import__("os").environ.get("KB_SOURCE_DEADLINE", "25")
 COOLDOWN = 300.0                      # seconds a throttled source is left alone
 _COOLDOWN: dict[str, float] = {}      # source -> monotonic time it may be asked again (per server process)
 SOURCES = ("openalex", "arxiv", "s2", "local")
+
+
+def default_sources() -> tuple[str, ...]:
+    """Semantic Scholar only with a key: the shared keyless pool answers 429 to nearly every search."""
+    import os
+
+    return SOURCES if os.environ.get("S2_API_KEY") else tuple(s for s in SOURCES if s != "s2")
+
+
 # arXiv's own search matches words, it does not rank by relevance well: its votes count less.
 WEIGHT = {"openalex": 1.0, "s2": 1.0, "arxiv": 0.5, "local": 0.8}
 CITATION_BOOST = 0.008        # per decade of citations; 1000 citations ~ a top-3 place in one source
@@ -108,7 +117,8 @@ def brief(db: Database, paper_id: str, abstract_chars: int = 500) -> dict[str, A
 
 
 def find_papers(db: Database, query: str, limit: int = 15, year_from: int | None = None,
-                use: tuple[str, ...] = SOURCES, on_paper: Callable[[str], list[str]] | None = None) -> dict[str, Any]:
+                use: tuple[str, ...] | None = None, on_paper: Callable[[str], list[str]] | None = None) -> dict[str, Any]:
+    use = use or default_sources()
     per_source = max(limit * 2, 20)
     results: dict[str, list[Paper]] = {}
     status: dict[str, str] = {}
@@ -168,7 +178,7 @@ def find_papers(db: Database, query: str, limit: int = 15, year_from: int | None
         stored.append((k, pid))
     db.commit()
     top = stored[:limit]
-    if not status.get("s2", "").startswith(("failed", "skipped", "timeout")):  # S2 throttled us: do not wait again
+    if "s2" in use and not status.get("s2", "").startswith(("failed", "skipped", "timeout")):  # S2 throttled us: do not wait again
         enrich_s2(db, [pid for k, pid in top if "s2" not in found_in.get(k, [])])
     for _, pid in top:
         grade_and_save(db, pid)

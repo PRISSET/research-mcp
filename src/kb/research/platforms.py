@@ -1,5 +1,6 @@
-"""GitHub, Hugging Face, Hacker News and Stack Overflow — practical knowledge that papers lack: working configs,
-known bugs, model cards, release notes, community experience. No keys needed.
+"""GitHub, Hugging Face, Civitai, the ComfyUI node registry, Hacker News and Stack Overflow — practical knowledge
+that papers lack: working configs, known bugs, model cards, release notes, community LoRAs and nodes, community
+experience. No keys needed (optional keys: `kb keys`).
 
 GitHub without a token: 10 searches a minute and 60 other API calls an hour (READMEs come from
 raw.githubusercontent.com and do not count). GITHUB_TOKEN, if the user sets it, raises the limits.
@@ -44,7 +45,7 @@ def _save(db: Database, d: Doc) -> dict[str, Any]:
 
 SHOWN = {"created", "age_months", "relation", "stars", "forks", "pushed", "archived", "license", "language", "state", "merged", "comments", "repo",
          "downloads", "likes", "pipeline", "library", "params", "gated", "base_model", "points", "score", "answered",
-         "updated", "author"}
+         "updated", "author", "type", "base_models", "trained_words", "nsfw", "status", "model", "comments_n"}
 
 
 # ---------------- GitHub ----------------
@@ -322,3 +323,177 @@ def forum_search(db: Database, query: str, sites: list[str] | None = None, limit
 
 def _unescape(s: str) -> str:
     return html.unescape(s)
+
+
+# ---------------- Community: Civitai, ComfyUI nodes, Hugging Face discussions ----------------
+
+CIVITAI = "https://civitai.com/api/v1"
+COMFY_REGISTRY = "https://api.comfy.org"
+GENERATIVE = re.compile(r"lora|diffusion|comfy|checkpoint|sdxl|flux|qwen[- ]?image|wan\b|hunyuan|ltx|minimax|\bh3\b|"
+                        r"text[- ]to[- ](image|video)|t2v|t2i|i2v|image gen|video gen|txt2img|inpaint|controlnet|"
+                        r"upscal|style|character|anime|nsfw|sampler|workflow|node", re.I)
+
+
+def _plain(html_text: str | None) -> str:
+    return " ".join(html.unescape(re.sub(r"<[^>]+>", " ", html_text or "")).split())
+
+
+def _words(text: str) -> set[str]:
+    return {w for w in re.findall(r"[a-z0-9][a-z0-9.\-]{2,}", text.lower()) if w not in HF_STOP}
+
+
+def _fallbacks(query: str) -> list[str]:
+    """Name-matching searches (Civitai, ComfyUI registry) find nothing for a long query: then its first two
+    content words, then the longest one."""
+    words = [w for w in re.findall(r"[a-z0-9][a-z0-9.\-]{2,}", query.lower()) if w not in HF_STOP]
+    return list(dict.fromkeys(q for q in [query, " ".join(words[:2]), max(words, key=len, default="")] if q))
+
+
+def _civitai_client() -> Any:
+    key = os.environ.get("CIVITAI_API_KEY")
+    return interactive_client(0.3, {"Authorization": f"Bearer {key}"} if key else None)
+
+
+def _civitai_doc(m: dict[str, Any]) -> Doc:
+    versions = m.get("modelVersions") or []
+    latest = versions[0] if versions else {}
+    stats = m.get("stats") or {}
+    files = [f.get("name", "") for v in versions[:1] for f in v.get("files") or []]
+    extra = {"type": m.get("type"), "base_models": sorted({v.get("baseModel") for v in versions if v.get("baseModel")}),
+             "downloads": stats.get("downloadCount"), "likes": stats.get("thumbsUpCount"),
+             "dislikes": stats.get("thumbsDownCount"), "comments_n": stats.get("commentCount"),
+             "trained_words": (latest.get("trainedWords") or [])[:8], "nsfw": m.get("nsfw"),
+             "versions": len(versions), "latest_version": latest.get("name"),
+             "updated": _date(latest.get("publishedAt")), "owner": (m.get("creator") or {}).get("username"),
+             "commercial_use": m.get("allowCommercialUse"),
+             "pickle_files": [f for f in files if f.endswith((".ckpt", ".pt", ".pth", ".bin"))][:3],
+             "safetensors": any(f.endswith(".safetensors") for f in files)}
+    return Doc(id=f"civitai:{m['id']}", kind="civitai", title=m.get("name") or str(m["id"]),
+               url=f"https://civitai.com/models/{m['id']}", platform="civitai",
+               summary=_plain(m.get("description"))[:600], published=_date(latest.get("publishedAt")),
+               authors=[extra["owner"] or ""], extra=extra)
+
+
+def civitai_search(db: Database, query: str, limit: int = 8, sort: str = "Most Downloaded",
+                   types: str | None = None) -> dict[str, Any]:
+    """Community checkpoints and LoRAs: base model, trigger words, downloads, likes. Adult content only with
+    RESEARCH_NSFW=1. Civitai matches names: a long query falls back to its two most specific words."""
+    http = _civitai_client()
+    nsfw = "true" if os.environ.get("RESEARCH_NSFW") == "1" else "false"
+    try:
+        tried, items = [], []
+        for q in _fallbacks(query):
+            tried.append(q)
+            params = {"query": q, "limit": min(limit, 20), "sort": sort, "nsfw": nsfw, **({"types": types} if types else {})}
+            items = http.get(f"{CIVITAI}/models", params=params).json().get("items") or []
+            if items:
+                break
+        out = [_save(db, _civitai_doc(m)) for m in items[:limit]]
+        db.commit()
+        return {"query": query, "searched": tried, "results": out,
+                "next": "fetch(url=…) for the description, versions, trigger words and files"}
+    finally:
+        http.close()
+
+
+def civitai_read(db: Database, model_id: str) -> dict[str, Any]:
+    http = _civitai_client()
+    try:
+        m = http.get(f"{CIVITAI}/models/{model_id}").json()
+    finally:
+        http.close()
+    d = _civitai_doc(m)
+    lines = [f"# {d.title}", d.summary and _plain(m.get("description"))]
+    for v in (m.get("modelVersions") or [])[:6]:
+        lines.append(f"## Version {v.get('name')} — base {v.get('baseModel')}, published {_date(v.get('publishedAt'))}")
+        if v.get("trainedWords"):
+            lines.append("Trigger words: " + ", ".join(v["trainedWords"][:20]))
+        if v.get("description"):
+            lines.append(_plain(v["description"]))
+        for f in (v.get("files") or [])[:4]:
+            lines.append(f"- file {f.get('name')} ({round((f.get('sizeKB') or 0) / 1024)} MB)")
+    text = "\n\n".join(x for x in lines if x)
+    brief = _save(db, d)
+    idx = index_text(db, d.id, text, "civitai", d.title)
+    db.commit()
+    return {**brief, "indexed": idx, "text": text[:12000], "truncated": len(text) > 12000}
+
+
+def comfy_nodes(db: Database, query: str, limit: int = 6) -> dict[str, Any]:
+    """ComfyUI custom nodes from the official registry: repository, downloads, stars, flagged / deprecated."""
+    http = interactive_client(0.2)
+    found: list[dict[str, Any]] = []
+    try:
+        for q in _fallbacks(query):
+            found = http.get(f"{COMFY_REGISTRY}/nodes/search", params={"search": q, "limit": min(limit, 20)}).json().get("nodes") or []
+            if found:
+                break
+    finally:
+        http.close()
+    out = []
+    for n in found[:limit]:
+        latest = n.get("latest_version") or {}
+        extra = {"downloads": n.get("downloads"), "stars": n.get("github_stars"), "created": _date(n.get("created_at")),
+                 "updated": _date(latest.get("createdAt")), "status": latest.get("status") or n.get("status"),
+                 "deprecated": latest.get("deprecated"), "repo": n.get("repository"),
+                 "owner": (n.get("publisher") or {}).get("id")}
+        out.append(_save(db, Doc(id=f"comfy:{n.get('id')}", kind="node", title=n.get("name") or n.get("id"),
+                                 url=n.get("repository") or f"https://registry.comfy.org/nodes/{n.get('id')}",
+                                 platform="comfy-registry", summary=n.get("description") or "",
+                                 published=extra["created"], extra=extra)))
+    db.commit()
+    return {"query": query, "searched": q, "results": out, "next": "fetch(url=<repository>) for the README and release notes"}
+
+
+def hf_discussions(db: Database, repo_ids: list[str], query: str = "", limit: int = 6) -> dict[str, Any]:
+    """Community tab of Hugging Face models: what breaks, which quant works, answers from the authors. With a query,
+    threads whose title shares a word with it (besides the model's own name) come first."""
+    http = interactive_client(0.2)
+    out = []
+    try:
+        for rid in repo_ids[:3]:
+            try:
+                threads = http.get(f"{HF}/api/models/{rid}/discussions", params={"p": 0}).json().get("discussions") or []
+            except Exception:
+                continue
+            want = _words(query) - _words(rid.replace("/", " "))
+            ranked = sorted(threads, key=lambda t: (len(want & _words(t.get("title") or "")), t.get("numComments") or 0),
+                            reverse=True)
+            for t in ranked[:limit]:
+                extra = {"repo": rid, "comments_n": t.get("numComments"), "state": t.get("status"),
+                         "pr": t.get("isPullRequest"), "created": _date(t.get("createdAt"))}
+                out.append(_save(db, Doc(id=f"hf-disc:{rid.lower()}#{t.get('num')}", kind="discussion",
+                                         title=f"{rid}: {t.get('title')}", url=f"{HF}/{rid}/discussions/{t.get('num')}",
+                                         platform="huggingface", published=extra["created"], extra=extra)))
+    finally:
+        http.close()
+    db.commit()
+    return {"results": out, "next": "fetch(url=…) to read a thread with the authors' answers"}
+
+
+def hf_discussion_read(db: Database, repo_id: str, num: int, kind: str = "models") -> dict[str, Any]:
+    http = interactive_client(0.2)
+    try:
+        d = http.get(f"{HF}/api/{kind}/{repo_id}/discussions/{num}").json()
+    finally:
+        http.close()
+    parts = [f"# {d.get('title')}"]
+    owner_replied = False
+    for e in d.get("events") or []:
+        if e.get("type") != "comment":
+            continue
+        a = e.get("author") or {}
+        raw = ((e.get("data") or {}).get("latest") or {}).get("raw") or ""
+        tag = " (repo owner)" if a.get("isOwner") else ""
+        owner_replied |= bool(a.get("isOwner"))
+        parts.append(f"## {a.get('name')}{tag} — {_date(e.get('createdAt'))}\n{raw}")
+    text = "\n\n".join(parts)
+    doc = Doc(id=f"hf-disc:{repo_id.lower()}#{num}", kind="discussion", title=f"{repo_id}: {d.get('title')}",
+              url=f"{HF}/{'' if kind == 'models' else kind + '/'}{repo_id}/discussions/{num}", platform="huggingface",
+              published=_date(d.get("createdAt")),
+              extra={"repo": repo_id, "state": d.get("status"), "maintainer_replied": owner_replied,
+                     "comments_n": len(parts) - 1})
+    brief = _save(db, doc)
+    idx = index_text(db, doc.id, text, "huggingface", doc.title)
+    db.commit()
+    return {**brief, "indexed": idx, "text": text[:12000], "truncated": len(text) > 12000}
