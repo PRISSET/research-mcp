@@ -274,9 +274,10 @@ def fetch_url(db: Database, url: str) -> dict[str, Any]:
     if m := HN_ITEM.search(url):
         return _hn_thread(db, m.group(1))
 
-    if re.search(r"(^|//|\.)reddit\.com/", url):   # blocks every non-browser client, even with a browser TLS print
-        return {"url": url, "error": "Reddit blocks direct reads", "next": "use the search snippet, or read the "
-                "thread with your own fetch tool and cite it from there"}
+    if re.search(r"(^|//|\.)(reddit\.com|redd\.it)/", url):   # 403 to every non-browser client: through Redlib
+        from kb.research.reddit import reddit_read
+
+        return reddit_read(db, url)
     http = interactive_client(0.0, {"User-Agent": BROWSER_UA})
     try:
         r = http.get(url)

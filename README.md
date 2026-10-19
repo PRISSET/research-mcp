@@ -93,7 +93,7 @@ curl -fsSL https://raw.githubusercontent.com/PRISSET/research-mcp/main/scripts/i
 | RESEARCH.md | `notebook_read`, `notebook_write`, `notebook_add_source` |
 
 Источники: OpenAlex, arXiv, Semantic Scholar (с ключом), GitHub, Hugging Face, Civitai, реестр нод ComfyUI, Hacker
-News, Stack Overflow, веб (SearXNG, Tavily или Brave; без них агент ищет своим веб-поиском, включая Reddit). Каждому источнику ставится оценка от A (официальный) до D (заброшенный или
+News, Stack Overflow, Reddit (через свой Redlib), веб (SearXNG, Tavily или Brave; без них агент ищет своим веб-поиском). Каждому источнику ставится оценка от A (официальный) до D (заброшенный или
 спорный).
 
 Расчёты `estimate_resources` сделаны по формулам, а не по замерам. Погрешность обычно до 15%, допущения
@@ -165,6 +165,24 @@ Linux включает пользовательский сервис `research-s
 `uv run kb searxng uninstall`. Свой SearXNG на другом адресе задаётся через `kb keys set SEARXNG_URL http://…`
 (в его `settings.yml` должен быть включён формат `json`). Порядок движков: SearXNG, Tavily, Brave.
 
+## Reddit
+
+Reddit закрыл API для новых приложений и отвечает 403 любым скриптам. Читать его можно через свой
+[Redlib](https://github.com/redlib-org/redlib), частный фронтенд Reddit. Он собирается из исходников через
+`cargo`, Docker не нужен:
+
+```bash
+cd ~/research-mcp && uv run kb redlib install      # или установщик с флагом --redlib
+```
+
+После установки `fetch` читает треды целиком: пост и дерево комментариев (сначала лучшие, с оценками и пометкой
+автора поста), а `research_sweep` ищет по Reddit. Команда собирает Redlib в `~/.local/share/research-mcp/redlib`
+(только `127.0.0.1:8889`), на Linux включает сервис `research-redlib` и прописывает `REDLIB_URL`. Сборка
+занимает несколько минут, нужен Rust (`cargo`). Сейчас ставится форк Silvenga: основная ветка Redlib с сентября
+2025 года не запускается с ошибкой «Failed to create OAuth client»
+([#485](https://github.com/redlib-org/redlib/issues/485)), а форк работает. Переключить источник можно через
+`KB_REDLIB_REPO` и `KB_REDLIB_BRANCH`. Удалить: `uv run kb redlib uninstall`.
+
 ## Ключи
 
 Работает и без ключей. Ключи необязательные и бесплатные (кроме Brave): каждый включает или улучшает одну
@@ -184,6 +202,7 @@ uv run kb keys set TAVILY_API_KEY ""            # удалить ключ
 | Ключ | Площадка | Что даёт | Где получить |
 |---|---|---|---|
 | `SEARXNG_URL` | веб-поиск | адрес своего SearXNG: бесплатно и без лимитов; заполняется сам при `kb searxng install` | см. «Веб-поиск» |
+| `REDLIB_URL` | Reddit | адрес своего Redlib: треды с комментариями и поиск по Reddit; заполняется сам при `kb redlib install` | см. «Reddit» |
 | `TAVILY_API_KEY` | веб-поиск | встроенный поиск для агентов; без ключа агент ищет своим веб-поиском. Бесплатный план без карты | [app.tavily.com](https://app.tavily.com) |
 | `BRAVE_API_KEY` | веб-поиск | поиск Brave вместо Tavily или вместе с ним; нужна карта, есть ежемесячный бесплатный кредит | [api-dashboard.search.brave.com](https://api-dashboard.search.brave.com) |
 | `GITHUB_TOKEN` | GitHub | репозитории и issues: 5000 запросов в час вместо 60. Хватает токена без прав (classic, без галочек) | [github.com/settings/tokens](https://github.com/settings/tokens) |
@@ -192,8 +211,8 @@ uv run kb keys set TAVILY_API_KEY ""            # удалить ключ
 | `OPENALEX_API_KEY` | OpenAlex | поиск статей: суточный лимит в 10 раз больше | [openalex.org/settings/api](https://openalex.org/settings/api) |
 | `CIVITAI_API_KEY` | Civitai | модели и LoRA, доступные только после входа, выше лимиты | [civitai.com/user/account](https://civitai.com/user/account) → API Keys |
 
-Hugging Face (кроме gated-моделей), arXiv, YouTube, реестр нод ComfyUI и Hacker News работают без ключей. Reddit закрыл API для новых
-приложений, поэтому Reddit агент ищет своим веб-поиском (`site:reddit.com`).
+Hugging Face (кроме gated-моделей), arXiv, YouTube, реестр нод ComfyUI и Hacker News работают без ключей. Reddit
+работает через свой Redlib (см. «Reddit»), а без него агент ищет Reddit своим веб-поиском (`site:reddit.com`).
 
 Вместо файла ключ можно передать переменной окружения при регистрации сервера, она важнее файла:
 

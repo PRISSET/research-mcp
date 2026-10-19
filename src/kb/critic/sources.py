@@ -124,6 +124,12 @@ def grade_doc(kind: str, extra: dict[str, Any], doc_id: str = "") -> dict[str, A
             reasons.append("the repo owner replied")
         else:
             flags.append("user reports: not confirmed by the authors")
+    elif kind == "reddit":
+        score, n = extra.get("score") or 0, extra.get("comments_n") or 0
+        reasons.append(f"Reddit thread in {extra.get('subreddit')}: {score} upvotes, {n} comments")
+        if score >= 100 or (extra.get("top_comment_score") or 0) >= 50:
+            reasons.append("well received by the community")
+        flags.append("user reports: settings and numbers are anecdotes — check them against a source or your own run")
     elif kind == "video":
         views = extra.get("views") or 0
         reasons.append(f"YouTube video by {extra.get('channel')}: {views:,} views")

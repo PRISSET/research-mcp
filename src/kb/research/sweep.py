@@ -4,20 +4,21 @@ Each platform runs in its own thread with its own database connection; a platfor
 is reported, never fatal.
 
 "community" is where practitioners talk: Hugging Face discussions of the matching models, Civitai checkpoints and
-LoRAs and ComfyUI nodes (for generative topics), Hacker News. "web" without a search key would only scrape
+LoRAs and ComfyUI nodes (for generative topics), Hacker News, and Reddit through the user's own Redlib. "web" without a search key would only scrape
 DuckDuckGo / Bing, which returns noise: the agent gets ready queries for its own web search instead (Reddit
 included — its API is closed to new apps).
 """
 
 from __future__ import annotations
 
+import os
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from kb.store import Database
 
 PLATFORMS = ("papers", "models", "repos", "issues", "community", "videos", "web")
-COMMUNITY = ("discussions", "civitai", "nodes", "hn")
+COMMUNITY = ("discussions", "reddit", "civitai", "nodes", "hn")
 ALIASES = {"forums": "community"}
 
 
@@ -36,6 +37,7 @@ def _own_db(fn: Any) -> Any:
 
 def community(query: str, parts: set[str], n: int) -> dict[str, Any]:
     from kb.research.platforms import civitai_search, comfy_nodes, forum_search, hf_discussions, hf_search
+    from kb.research.reddit import reddit_search
 
     def discussions(db: Database) -> Any:
         # threads gather on the base models (finetunes and quants rarely have any): the bases the matching models
@@ -49,6 +51,7 @@ def community(query: str, parts: set[str], n: int) -> dict[str, Any]:
 
     jobs = {
         "discussions": discussions,
+        "reddit": lambda db: reddit_search(db, query, max(3, n // 2)),
         "civitai": lambda db: civitai_search(db, query, n),
         "nodes": lambda db: comfy_nodes(db, query, max(3, n // 2)),
         "hn": lambda db: forum_search(db, query, ["hackernews"], limit=3),
@@ -68,7 +71,8 @@ def community(query: str, parts: set[str], n: int) -> dict[str, Any]:
 
 
 def web_queries(query: str) -> dict[str, Any]:
-    return {"use_your_own_search": [query, f"{query} site:reddit.com", f"{query} review OR comparison OR benchmark"],
+    reddit = [] if os.environ.get("REDLIB_URL") else [f"{query} site:reddit.com"]   # else community.reddit has it
+    return {"use_your_own_search": [query, *reddit, f"{query} review OR comparison OR benchmark"],
             "note": "Built-in web search is off without SearXNG / TAVILY_API_KEY / BRAVE_API_KEY (scraped results are noise). Run "
                     "these in your own web search and pass the useful pages to fetch(urls=[…]) so they are cached "
                     "and citable; platforms=['web'] forces the scraper."}
@@ -87,7 +91,8 @@ def research_sweep(query: str, platforms: list[str] | None = None, per_platform:
     if parts and "community" not in use:
         use.append("community")
     if "community" in use and not parts:
-        parts = {"discussions", "hn"} | ({"civitai", "nodes"} if GENERATIVE.search(query) else set())
+        parts = ({"discussions", "hn"} | ({"civitai", "nodes"} if GENERATIVE.search(query) else set())
+                 | ({"reddit"} if os.environ.get("REDLIB_URL") else set()))
     from kb.research.web import has_engine
 
     has_web_key = has_engine()
@@ -116,7 +121,7 @@ def research_sweep(query: str, platforms: list[str] | None = None, per_platform:
     out = {k: slim(v) for k, v in results.items()}
     if "papers" in out and isinstance(results["papers"], dict):
         out["papers_sources"] = results["papers"].get("sources")
-    hint = missing_hint(["SEARXNG_URL", "GITHUB_TOKEN", "S2_API_KEY"] if not has_web_key else ["GITHUB_TOKEN", "S2_API_KEY"])
+    hint = missing_hint((["SEARXNG_URL"] if not has_web_key else []) + ["REDLIB_URL", "GITHUB_TOKEN", "S2_API_KEY"])
     return {
         "query": query, **out,
         "how_to_use": (

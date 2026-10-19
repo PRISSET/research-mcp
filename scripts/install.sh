@@ -3,7 +3,7 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/PRISSET/research-mcp/main/scripts/install.sh | bash -s -- --agent claude
 #   scripts/install.sh [--agent claude|codex|all] [--dir PATH] [--notebook FILE] [--lang ru|en] [--embed|--no-embed]
-#                      [--agent-rules] [--no-register] [--searxng]
+#                      [--agent-rules] [--no-register] [--searxng] [--redlib]
 #
 #   --agent NAME     which agent to register in (and write rules for): claude, codex or all. Default: the agent
 #                    running this script (Claude Code sets CLAUDECODE, Codex CODEX_THREAD_ID / CODEX_SANDBOX*);
@@ -15,6 +15,7 @@
 #   --no-embed       skip it: keyword search only
 # The server runs on the CPU (registered with CUDA_VISIBLE_DEVICES=""): the GPU stays free for your own work.
 #   --searxng        install a local SearXNG (no Docker) for free, keyless web search, as a systemd user service
+#   --redlib         build a local Redlib (needs Rust's cargo) so Reddit threads and search can be read
 #   --agent-rules    add a short rules block to the agent's global instructions (~/.claude/CLAUDE.md for Claude Code,
 #                    ~/.codex/AGENTS.md for Codex) so it looks models / versions / errors up with this MCP in every
 #                    project (marked block; remove: --remove-agent-rules)
@@ -24,7 +25,7 @@ set -euo pipefail
 
 REPO_URL="https://github.com/PRISSET/research-mcp.git"
 NAME="research"
-SEARXNG=0 DIR="" NOTEBOOK="$HOME/research/RESEARCH.md" LANG_NB="ru" EMBED=1 REGISTER=1 RULES=keep AGENT=""
+SEARXNG=0 REDLIB=0 DIR="" NOTEBOOK="$HOME/research/RESEARCH.md" LANG_NB="ru" EMBED=1 REGISTER=1 RULES=keep AGENT=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -37,6 +38,7 @@ while [ $# -gt 0 ]; do
     --no-register) REGISTER=0 ;;
     --agent-rules) RULES=install ;;
     --searxng) SEARXNG=1 ;;
+    --redlib) REDLIB=1 ;;
     --remove-agent-rules) RULES=remove ;;
     -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
@@ -153,6 +155,11 @@ if [ "$SEARXNG" = 1 ]; then
   (cd "$DIR" && uv run kb searxng install) || warn "SearXNG install failed: web search falls back to the agent's own"
 fi
 
+if [ "$REDLIB" = 1 ]; then
+  say "Building Redlib (Reddit reader, a few minutes)"
+  (cd "$DIR" && uv run kb redlib install) || warn "Redlib install failed: Reddit is searched with the agent's own web search"
+fi
+
 say "Done"
 echo "Installed in: $DIR"
 echo "Notebook:     $NOTEBOOK (created on the first research)"
@@ -163,6 +170,7 @@ else
   [ "$REGISTER" = 1 ] && warn "agent '$AGENT' not found on PATH"
   echo "Not registered anywhere. Add manually: <agent> mcp add $NAME -- uv --directory \"$DIR\" run research-mcp"
 fi
+[ "$REDLIB" = 1 ] || echo "Read Reddit threads: re-run with --redlib (or: cd \"$DIR\" && uv run kb redlib install)"
 [ "$SEARXNG" = 1 ] || echo "Free keyless web search: re-run with --searxng (or: cd \"$DIR\" && uv run kb searxng install)"
 echo "Optional free keys make search better (GitHub, Hugging Face, Semantic Scholar, Civitai, Tavily):"
 echo "  cd \"$DIR\" && uv run kb keys            # what each key improves and where to get it"

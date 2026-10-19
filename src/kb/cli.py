@@ -110,6 +110,27 @@ def searxng_uninstall() -> None:
     console.print("SearXNG removed, SEARXNG_URL cleared")
 
 
+redlib_app = typer.Typer(help="Local Redlib for reading Reddit threads and search (no Docker)", no_args_is_help=True)
+app.add_typer(redlib_app, name="redlib")
+
+
+@redlib_app.command("install")
+def redlib_install() -> None:
+    """Build (or update) Redlib with cargo in ~/.local/share/research-mcp/redlib and point research-mcp at it."""
+    from kb import redlib
+
+    how = redlib.install()
+    console.print(f"[green]Redlib ready[/] at {redlib.url()} — {how}. REDLIB_URL saved; restart the agent session.")
+
+
+@redlib_app.command("uninstall")
+def redlib_uninstall() -> None:
+    from kb import redlib
+
+    redlib.uninstall()
+    console.print("Redlib removed, REDLIB_URL cleared")
+
+
 @app.command()
 def stats() -> None:
     """Size of the local base and the notebook."""

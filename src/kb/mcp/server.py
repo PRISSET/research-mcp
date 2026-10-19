@@ -27,8 +27,8 @@ Rules that matter most:
   barely fits — offer FP8 / INT8 (near-lossless, half the memory) and state the quality cost. 4-bit and below
   only when 8-bit cannot fit. Will it run or train on their hardware: estimate_resources.
 - A command, install, build or run failed: diagnose_error with the exact error text BEFORE guessing at fixes.
-- Your own web search is the main web search (Reddit, blogs, news): the built-in one is only good with a Tavily /
-  Brave key. Pass useful pages to fetch so they are cached and can be cited in the notebook. When a result says
+- Your own web search is the main web search (Reddit, blogs, news): the built-in one is only good with SearXNG /
+  Tavily / Brave. Reddit links go to fetch: with the user's Redlib it reads the thread and its comments. Pass useful pages to fetch so they are cached and can be cited in the notebook. When a result says
   an optional key would help, tell the user once (`uv run kb keys`).
 
 Research workflow: research_brief (ask the user what it reports missing) -> notebook_read(query=…) to reuse
@@ -105,14 +105,15 @@ def _unknown(source_id: str) -> dict[str, str]:
 def research_sweep(query: str, platforms: list[str] | None = None, per_platform: int = 6) -> dict:
     """Search every platform at once — start here when planning, choosing a model / library / approach, or entering
     an unfamiliar topic: papers, Hugging Face models, GitHub repos and issues, community (Hugging Face discussions of
-    the matching models, Civitai checkpoints / LoRAs and ComfyUI nodes for generative topics, Hacker News), YouTube
+    the matching models, Reddit with the user's Redlib, Civitai checkpoints / LoRAs and ComfyUI nodes for
+    generative topics, Hacker News), YouTube
     videos and the web (with a Tavily / Brave key; otherwise ready queries for your own web search), each graded. Then fetch the
     promising ones.
 
     Args:
         query: short English query, e.g. "talking head lip sync"
         platforms: subset of ["papers", "models", "repos", "issues", "community", "videos", "web"] (default: all), or community
-            parts alone: "discussions", "civitai", "nodes", "hn"; ["web"] forces the built-in web search
+            parts alone: "discussions", "reddit", "civitai", "nodes", "hn"; ["web"] forces the built-in web search
         per_platform: results per platform (3-15)
     """
     from kb.research.sweep import research_sweep as _sweep
@@ -361,7 +362,8 @@ def fetch(url: str | None = None, urls: list[str] | None = None, paper_ids: list
           refresh: bool = False) -> dict:
     """Read sources and cache them for search_fulltext. url / urls (up to 12, read in parallel): any page — docs,
     blogs, PDFs, GitHub repos (README + release notes), issue / PR threads (maintainers marked), Hugging Face
-    model cards and discussions, Civitai models, YouTube videos (transcript with timestamps), arXiv papers, Hacker News threads; returns the text (12k chars, 5k each for several), an outline
+    model cards and discussions, Civitai models, YouTube videos (transcript with timestamps), Reddit threads with their comments (through the
+    user's Redlib), arXiv papers, Hacker News threads; returns the text (12k chars, 5k each for several), an outline
     and the source id for notebook_add_source. paper_ids (up to 10, from find_papers): full texts from arXiv or an
     open-access PDF, split into passages with their numbers extracted."""
     out: dict = {}
