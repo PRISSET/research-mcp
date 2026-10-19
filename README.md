@@ -1,6 +1,6 @@
 # research-mcp
 
-MCP-сервер для ML. Подключается к Claude Code, Codex CLI или любому другому MCP-клиенту и даёт агенту
+MCP-сервер для ML. Подключается к Claude Code, Codex CLI, OpenCode или любому другому MCP-клиенту и даёт агенту
 доступ к свежим данным: статьи, GitHub, Hugging Face, форумы, веб.
 
 Зачем: знания модели устаревают. Агент советует модели годичной давности, качает bf16 там, где хватило бы FP8, и
@@ -55,15 +55,25 @@ curl -fsSL https://raw.githubusercontent.com/PRISSET/research-mcp/main/scripts/i
 и скажи, чем закончилось.
 ```
 
+OpenCode:
+
+```text
+Установи MCP-сервер research: выполни
+curl -fsSL https://raw.githubusercontent.com/PRISSET/research-mcp/main/scripts/install.sh | bash -s -- --agent opencode --agent-rules
+и скажи, чем закончилось.
+```
+
 Скрипт клонирует репозиторий в `~/research-mcp`, ставит uv и зависимости и регистрирует сервер только в том
 агенте, для которого вы его ставите. Флаг `--agent-rules` добавляет в его глобальные инструкции
-(`~/.claude/CLAUDE.md` для Claude Code, `~/.codex/AGENTS.md` для Codex) короткое правило: проверять модели и
-версии через этот сервер. После установки перезапустите агента. Нужны оба агента сразу — `--agent all`.
+(`~/.claude/CLAUDE.md` для Claude Code, `~/.codex/AGENTS.md` для Codex, `~/.config/opencode/AGENTS.md` для
+OpenCode) короткое правило: проверять модели и версии через этот сервер. OpenCode без своего `AGENTS.md` читает
+`~/.claude/CLAUDE.md`, поэтому правило туда второй раз не пишется. После установки перезапустите агента. Нужны все
+агенты сразу — `--agent all`.
 
 Сервер лёгкий: в простое около 80 МБ RAM, во время поиска по прочитанному около 250 МБ, torch и видеокарта не
 нужны. При каждом запуске он сам обновляется с GitHub, если вы не меняли файлы в папке установки.
 
-Флаги установщика: `--agent claude|codex|all`, `--notebook FILE`, `--lang ru|en`, `--no-embed` (только поиск по словам), `--dir PATH`,
+Флаги установщика: `--agent claude|codex|opencode|all`, `--notebook FILE`, `--lang ru|en`, `--no-embed` (только поиск по словам), `--dir PATH`,
 `--no-register`, `--remove-agent-rules`.
 
 ## Примеры запросов
@@ -142,6 +152,26 @@ startup_timeout_sec = 120
 tool_timeout_sec = 300
 ```
 
+OpenCode (из папки research-mcp):
+
+```bash
+uv run kb opencode register        # удалить: uv run kb opencode unregister
+```
+
+Команда дописывает сервер в `~/.config/opencode/opencode.json` и не трогает остальной конфиг: провайдеры,
+модель и другие MCP остаются как были, старая версия сохраняется в `opencode.json.bak`. Формат выбирается по
+версии OpenCode: в v2 это `mcp.servers` с таймаутом запуска 120 с, в v1 — `mcp.research`. Вручную для v2:
+
+```json
+{ "mcp": { "servers": { "research": { "type": "local", "command": ["uv", "--directory", "/путь/к/research-mcp", "run", "research-mcp"],
+  "environment": { "CUDA_VISIBLE_DEVICES": "" }, "timeout": { "startup": 120000 } } } } }
+```
+
+OpenCode v2 по умолчанию даёт инструменты MCP через Code Mode: схемы 21 инструмента не занимают контекст, что
+важно для локальных моделей с коротким окном. Если модель плохо пишет код вызова, поставьте `"codemode": false`.
+`opencode mcp list` показывает запущенный фоновый сервис OpenCode, поэтому после регистрации перезапустите
+OpenCode (`opencode service restart` или выход из всех сессий).
+
 Другие клиенты (stdio):
 
 ```json
@@ -197,7 +227,7 @@ uv run kb keys set TAVILY_API_KEY tvly-xxxx     # добавить или зам
 uv run kb keys set TAVILY_API_KEY ""            # удалить ключ
 ```
 
-После добавления перезапустите сессию агента (Claude Code / Codex), чтобы сервер перечитал ключи.
+После добавления перезапустите сессию агента (Claude Code / Codex / OpenCode), чтобы сервер перечитал ключи.
 
 | Ключ | Площадка | Что даёт | Где получить |
 |---|---|---|---|

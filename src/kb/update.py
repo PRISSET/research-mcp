@@ -144,7 +144,7 @@ def refresh_rules() -> list[str]:
     from kb import rules
 
     done = []
-    for f in ("~/.claude/CLAUDE.md", "~/.codex/AGENTS.md"):
+    for f in ("~/.claude/CLAUDE.md", "~/.codex/AGENTS.md", "~/.config/opencode/AGENTS.md"):
         p = Path(f).expanduser()
         try:
             if p.exists() and rules.START in p.read_text(encoding="utf-8"):

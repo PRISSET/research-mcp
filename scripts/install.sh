@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# One-command install of the research MCP server and its registration in Claude Code or Codex CLI.
+# One-command install of the research MCP server and its registration in Claude Code, Codex CLI or OpenCode.
 #
 #   curl -fsSL https://raw.githubusercontent.com/PRISSET/research-mcp/main/scripts/install.sh | bash -s -- --agent claude
-#   scripts/install.sh [--agent claude|codex|all] [--dir PATH] [--notebook FILE] [--lang ru|en] [--embed|--no-embed]
+#   scripts/install.sh [--agent claude|codex|opencode|all] [--dir PATH] [--notebook FILE] [--lang ru|en] [--embed|--no-embed]
 #                      [--agent-rules] [--no-register] [--searxng] [--redlib]
 #
-#   --agent NAME     which agent to register in (and write rules for): claude, codex or all. Default: the agent
+#   --agent NAME     which agent to register in (and write rules for): claude, codex, opencode or all. Default: the agent
 #                    running this script (Claude Code sets CLAUDECODE, Codex CODEX_THREAD_ID / CODEX_SANDBOX*);
 #                    run by hand in a terminal, every installed agent
 #   --dir PATH       where to clone (default: this checkout, or ~/research-mcp)
@@ -17,9 +17,9 @@
 #   --searxng        install a local SearXNG (no Docker) for free, keyless web search, as a systemd user service
 #   --redlib         build a local Redlib (needs Rust's cargo) so Reddit threads and search can be read
 #   --agent-rules    add a short rules block to the agent's global instructions (~/.claude/CLAUDE.md for Claude Code,
-#                    ~/.codex/AGENTS.md for Codex) so it looks models / versions / errors up with this MCP in every
+#                    ~/.codex/AGENTS.md for Codex, ~/.config/opencode/AGENTS.md for OpenCode) so it looks models / versions / errors up with this MCP in every
 #                    project (marked block; remove: --remove-agent-rules)
-#   --no-register    do not touch Claude Code / Codex CLI configs
+#   --no-register    do not touch Claude Code / Codex CLI / OpenCode configs
 # Safe to re-run: pulls updates, re-syncs, re-registers. No API keys needed.
 set -euo pipefail
 
@@ -53,12 +53,13 @@ warn() { printf '\033[33m!! %s\033[0m\n' "$*" >&2; }
 if [ -z "$AGENT" ]; then
   if [ -n "${CLAUDECODE:-}" ]; then AGENT=claude
   elif [ -n "${CODEX_THREAD_ID:-}${CODEX_SANDBOX:-}${CODEX_SANDBOX_NETWORK_DISABLED:-}" ]; then AGENT=codex
+  elif [ -n "${OPENCODE:-}${OPENCODE_SESSION_ID:-}" ]; then AGENT=opencode
   else AGENT=all
   fi
 fi
 case "$AGENT" in
-  claude|codex|all) ;;
-  *) echo "--agent must be claude, codex or all (got: $AGENT)" >&2; exit 2 ;;
+  claude|codex|opencode|all) ;;
+  *) echo "--agent must be claude, codex, opencode or all (got: $AGENT)" >&2; exit 2 ;;
 esac
 want() { [ "$AGENT" = all ] || [ "$AGENT" = "$1" ]; }
 
@@ -135,14 +136,25 @@ if [ "$REGISTER" = 1 ]; then
         "$cfg" > "$cfg.tmp" && mv "$cfg.tmp" "$cfg"
     fi
   fi
+  if want opencode && command -v opencode >/dev/null; then
+    say "Registering in OpenCode (global config)"
+    (cd "$DIR" && uv run kb opencode register --name "$NAME" --notebook "$NOTEBOOK" --lang "$LANG_NB") \
+      && registered+=("OpenCode")
+  fi
 fi
 
-# --- optional: global agent rules (Claude Code reads ~/.claude/CLAUDE.md, Codex ~/.codex/AGENTS.md)
+# --- optional: global agent rules (Claude Code reads ~/.claude/CLAUDE.md, Codex ~/.codex/AGENTS.md, OpenCode
+#     ~/.config/opencode/AGENTS.md or, without it, ~/.claude/CLAUDE.md)
 if [ "$RULES" != keep ]; then
   say "Agent rules: $RULES"
   targets=()
   if want claude && command -v claude >/dev/null; then targets+=("$HOME/.claude/CLAUDE.md"); fi
   if want codex && command -v codex >/dev/null; then targets+=("${CODEX_HOME:-$HOME/.codex}/AGENTS.md"); fi
+  if want opencode && command -v opencode >/dev/null; then
+    # OpenCode reads ~/.claude/CLAUDE.md only while its own AGENTS.md is missing: same file, no second copy
+    oc=$(cd "$DIR" && uv run python -c 'from kb.opencode import rules_path; print(rules_path())')
+    case " ${targets[*]} " in *" $oc "*) ;; *) targets+=("$oc") ;; esac
+  fi
   if [ ${#targets[@]} -gt 0 ]; then
     uv run python -m kb.rules "$RULES" "${targets[@]}"
   else

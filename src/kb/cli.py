@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import typer
 from rich.console import Console
 from rich.table import Table
@@ -108,6 +110,28 @@ def searxng_uninstall() -> None:
 
     searxng.uninstall()
     console.print("SearXNG removed, SEARXNG_URL cleared")
+
+
+opencode_app = typer.Typer(help="Register research-mcp in OpenCode", no_args_is_help=True)
+app.add_typer(opencode_app, name="opencode")
+
+
+@opencode_app.command("register")
+def opencode_register(name: str = "research", notebook: str = "~/research/RESEARCH.md", lang: str = "ru") -> None:
+    """Add the server to OpenCode's global config (~/.config/opencode/opencode.json), keeping everything else."""
+    from kb import opencode
+    from kb.config import ROOT
+
+    env = {"RESEARCH_NOTEBOOK": str(Path(notebook).expanduser()), "RESEARCH_LANG": lang, "CUDA_VISIBLE_DEVICES": ""}
+    where = opencode.register(name, str(ROOT), env)
+    console.print(f"[green]Registered '{name}'[/] in {where}. Restart OpenCode; `opencode mcp list` shows it.")
+
+
+@opencode_app.command("unregister")
+def opencode_unregister(name: str = "research") -> None:
+    from kb import opencode
+
+    console.print("removed" if opencode.unregister(name) else f"'{name}' is not in {opencode.config_path()}")
 
 
 redlib_app = typer.Typer(help="Local Redlib for reading Reddit threads and search (no Docker)", no_args_is_help=True)
