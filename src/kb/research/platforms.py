@@ -45,7 +45,8 @@ def _save(db: Database, d: Doc) -> dict[str, Any]:
 
 SHOWN = {"created", "age_months", "relation", "stars", "forks", "pushed", "archived", "license", "language", "state", "merged", "comments", "repo",
          "downloads", "likes", "pipeline", "library", "params", "gated", "base_model", "points", "score", "answered",
-         "updated", "author", "type", "base_models", "trained_words", "nsfw", "status", "model", "comments_n"}
+         "updated", "author", "type", "base_models", "trained_words", "nsfw", "status", "model", "comments_n",
+         "channel", "views", "duration", "age"}
 
 
 # ---------------- GitHub ----------------

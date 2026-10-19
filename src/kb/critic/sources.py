@@ -124,6 +124,14 @@ def grade_doc(kind: str, extra: dict[str, Any], doc_id: str = "") -> dict[str, A
             reasons.append("the repo owner replied")
         else:
             flags.append("user reports: not confirmed by the authors")
+    elif kind == "video":
+        views = extra.get("views") or 0
+        reasons.append(f"YouTube video by {extra.get('channel')}: {views:,} views")
+        if views >= 50_000:
+            reasons.append("widely watched")
+        if str(extra.get("transcript", "")).startswith("none"):
+            flags.append("no transcript: only the title and description were read")
+        flags.append("video: a demo or opinion — check settings and numbers against docs, repos or papers")
     elif kind == "hn":
         reasons.append(f"{extra.get('points')} points, {extra.get('comments')} comments: opinions, not evidence")
     return {"grade": grade, "reasons": reasons, "flags": flags}

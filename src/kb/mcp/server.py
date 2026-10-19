@@ -15,7 +15,7 @@ T = TypeVar("T")
 
 INSTRUCTIONS = """\
 Research engine for ML and any other field: papers (OpenAlex, arXiv, Semantic Scholar), GitHub, Hugging Face,
-Civitai, ComfyUI nodes, forums and the web, read in full, graded by evidence (A official ... D disputed), with findings kept in one
+Civitai, ComfyUI nodes, YouTube, forums and the web, read in full, graded by evidence (A official ... D disputed), with findings kept in one
 Markdown file, RESEARCH.md. What it reads is cached locally and searchable (search_fulltext).
 
 Rules that matter most:
@@ -93,13 +93,13 @@ def _unknown(source_id: str) -> dict[str, str]:
 def research_sweep(query: str, platforms: list[str] | None = None, per_platform: int = 6) -> dict:
     """Search every platform at once — start here when planning, choosing a model / library / approach, or entering
     an unfamiliar topic: papers, Hugging Face models, GitHub repos and issues, community (Hugging Face discussions of
-    the matching models, Civitai checkpoints / LoRAs and ComfyUI nodes for generative topics, Hacker News) and the
-    web (with a Tavily / Brave key; otherwise ready queries for your own web search), each graded. Then fetch the
+    the matching models, Civitai checkpoints / LoRAs and ComfyUI nodes for generative topics, Hacker News), YouTube
+    videos and the web (with a Tavily / Brave key; otherwise ready queries for your own web search), each graded. Then fetch the
     promising ones.
 
     Args:
         query: short English query, e.g. "talking head lip sync"
-        platforms: subset of ["papers", "models", "repos", "issues", "community", "web"] (default: all), or community
+        platforms: subset of ["papers", "models", "repos", "issues", "community", "videos", "web"] (default: all), or community
             parts alone: "discussions", "civitai", "nodes", "hn"; ["web"] forces the built-in web search
         per_platform: results per platform (3-15)
     """
@@ -346,7 +346,7 @@ def fetch(url: str | None = None, urls: list[str] | None = None, paper_ids: list
           refresh: bool = False) -> dict:
     """Read sources and cache them for search_fulltext. url / urls (up to 12, read in parallel): any page — docs,
     blogs, PDFs, GitHub repos (README + release notes), issue / PR threads (maintainers marked), Hugging Face
-    model cards and discussions, Civitai models, arXiv papers, Hacker News threads; returns the text (12k chars, 5k each for several), an outline
+    model cards and discussions, Civitai models, YouTube videos (transcript with timestamps), arXiv papers, Hacker News threads; returns the text (12k chars, 5k each for several), an outline
     and the source id for notebook_add_source. paper_ids (up to 10, from find_papers): full texts from arXiv or an
     open-access PDF, split into passages with their numbers extracted."""
     out: dict = {}

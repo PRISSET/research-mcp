@@ -327,7 +327,7 @@ def facets(topic: str, terms: list[str] | None, checks: list[Check]) -> list[dic
                     "papers": [(c.query.format(t=t), "rel"), (c.query.format(t=t), "cited")]})
     out += [
         {"facet": "practice", "question": f"best practices and lessons learned for {t}",
-         "papers": [(f"{t} lessons learned", "rel")], "web": [f"{t} best practices"]},
+         "papers": [(f"{t} lessons learned", "rel")], "web": [f"{t} best practices"], "videos": [f"{t} tutorial"]},
         {"facet": "pitfalls", "question": f"common mistakes, failure cases and pitfalls of {t}",
          "papers": [(f"{t} challenges limitations", "rel")], "web": [f"{t} mistakes to avoid"]},
         {"facet": "tools", "question": f"tools and recent automated methods for {t}", "repos": [t],
@@ -362,6 +362,7 @@ def _with_own_db(fn: Any) -> Any:
 def _search_all(fs: list[dict[str, Any]]) -> tuple[dict[tuple[int, str, str], Any], dict[str, str]]:
     from kb.research.platforms import github_search
     from kb.research.web import web_search
+    from kb.research.youtube import youtube_search
 
     from kb.research.web import has_engine
 
@@ -375,6 +376,8 @@ def _search_all(fs: list[dict[str, Any]]) -> tuple[dict[tuple[int, str, str], An
             jobs[(i, "papers", f"{q} [{mode}]")] = pool.submit(_openalex, q, mode)
         for q in f.get("web", []) if web else []:
             jobs[(i, "web", q)] = pool.submit(_with_own_db(lambda db, q: web_search(db, q, 6)), q)
+        for q in f.get("videos", []):
+            jobs[(i, "videos", q)] = pool.submit(_with_own_db(lambda db, q: youtube_search(db, q, 4)), q)
         for q in f.get("repos", []):
             jobs[(i, "repos", q)] = pool.submit(_with_own_db(lambda db, q: github_search(db, q, "repos", limit=5)), q)
     done, _ = wait(jobs.values(), timeout=SEARCH_DEADLINE)
@@ -534,7 +537,7 @@ def study_topic(db: Database, topic: str, task: str | None = None, terms: list[s
         for h in kept[:3 if platform == "web" else 2]:
             per_facet[i].append({"id": h.get("id"), "kind": h.get("kind") or "web", "title": h.get("title"),
                                  "url": h.get("url"), "grade": h.get("grade"), "_score": 0.45,
-                                 "_readable": platform == "web"})
+                                 "_readable": platform in ("web", "videos")})
 
     # read the best right away: overall ranking, foundations / reference works / concepts first, at most two per
     # facet, arXiv before publisher PDFs (often blocked), about a third web guides

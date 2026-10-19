@@ -16,7 +16,7 @@ from typing import Any
 
 from kb.store import Database
 
-PLATFORMS = ("papers", "models", "repos", "issues", "community", "web")
+PLATFORMS = ("papers", "models", "repos", "issues", "community", "videos", "web")
 COMMUNITY = ("discussions", "civitai", "nodes", "hn")
 ALIASES = {"forums": "community"}
 
@@ -79,6 +79,7 @@ def research_sweep(query: str, platforms: list[str] | None = None, per_platform:
     from kb.research.find import find_papers
     from kb.research.platforms import GENERATIVE, github_search, hf_search
     from kb.research.web import web_search
+    from kb.research.youtube import youtube_search
 
     asked = [ALIASES.get(p, p) for p in (platforms or [])]
     parts = {p for p in asked if p in COMMUNITY}
@@ -98,6 +99,7 @@ def research_sweep(query: str, platforms: list[str] | None = None, per_platform:
         "repos": lambda: _own_db(lambda db: github_search(db, query, "repos", limit=n)),
         "issues": lambda: _own_db(lambda db: github_search(db, query, "issues", limit=n)),
         "community": lambda: community(query, parts, n),
+        "videos": lambda: _own_db(lambda db: youtube_search(db, query, max(3, n // 2))),
         "web": (lambda: _own_db(lambda db: web_search(db, query, n))) if has_web_key or forced_web
         else (lambda: web_queries(query)),
     }
@@ -120,7 +122,7 @@ def research_sweep(query: str, platforms: list[str] | None = None, per_platform:
         "how_to_use": (
             "Cross-check: official model cards / repos (grade A) for facts about a model; GitHub issues and HF "
             "discussions for real-world problems and fixes; Civitai and ComfyUI nodes for what the community "
-            "actually runs; papers for methods and measured numbers. Read the promising ones (fetch(url=…) / "
+            "actually runs; YouTube for walkthroughs (fetch reads the transcript with timestamps); papers for methods and measured numbers. Read the promising ones (fetch(url=…) / "
             "fetch(paper_ids=…)). Before recommending a model run latest_models for the task and model_variants "
             "for the user's GPU; check_versions on libraries; and use your own web search (Reddit, blogs) for "
             "experience and anything announced in the last weeks."),

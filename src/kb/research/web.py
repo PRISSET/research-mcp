@@ -258,6 +258,10 @@ def fetch_url(db: Database, url: str) -> dict[str, Any]:
         return platforms.github_read(db, m.group(1), path=m.group(2))
     if m := GH_REPO.search(url):
         return platforms.github_read(db, m.group(1))
+    from kb.research.youtube import VIDEO_ID, youtube_read
+
+    if VIDEO_ID.search(url):
+        return youtube_read(db, url)
     if m := HF_DISC.search(url):
         kind = {"datasets/": "datasets", "spaces/": "spaces"}.get(m.group(1) or "", "models")
         return platforms.hf_discussion_read(db, m.group(2), int(m.group(3)), kind)

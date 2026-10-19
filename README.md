@@ -16,6 +16,7 @@ MCP-сервер для ML. Подключается к Claude Code, Codex CLI �
 - найти по тексту ошибки issues и PR с исправлением и проверить, не устарели ли версии библиотек;
 - найти, что реально используют в сообществе: LoRA и чекпоинты на Civitai, ноды ComfyUI, обсуждения моделей на
   Hugging Face («медленно на 5090», «какой квант работает»);
+- найти видео на YouTube и прочитать их по субтитрам с таймкодами: агент цитирует нужный момент ссылкой на секунду;
 - помнить, что вы уже пробовали и с каким результатом, и не предлагать то, что не сработало;
 - найти свежие методы под конкретную задачу («сэмплер лучше res_multistep при том же числе шагов») с цифрами из
   статей и ссылкой на код;
@@ -82,7 +83,7 @@ curl -fsSL https://raw.githubusercontent.com/PRISSET/research-mcp/main/scripts/i
 | Уточнить задачу | `research_brief` |
 | Стать специалистом | `study_topic` (изучить область по аспектам и сразу прочитать лучшее), `review_plan` (разобрать план или схему) |
 | Модели | `latest_models`, `model_variants` (и сравнение моделей), `estimate_resources`, `dataset_info` |
-| Поиск | `research_sweep` (статьи, модели, репозитории, issues, сообщество: Civitai, ноды ComfyUI, обсуждения HF, HN; веб), `find_methods`, `find_papers` (и граф цитирований), `github_search`, `hf_search` |
+| Поиск | `research_sweep` (статьи, модели, репозитории, issues, сообщество: Civitai, ноды ComfyUI, обсуждения HF, HN; YouTube; веб), `find_methods`, `find_papers` (и граф цитирований), `github_search`, `hf_search` |
 | Чтение | `fetch` (страницы и полные тексты статей), `search_fulltext` (поиск по прочитанному), `evidence` (цифры и проверка утверждений), `source_info` (оценка, код, что пишут другие) |
 | Ошибки и версии | `diagnose_error`, `check_versions` |
 | RESEARCH.md | `notebook_read`, `notebook_write`, `notebook_add_source` |
@@ -180,7 +181,7 @@ uv run kb keys set TAVILY_API_KEY ""            # удалить ключ
 | `OPENALEX_API_KEY` | OpenAlex | поиск статей: суточный лимит в 10 раз больше | [openalex.org/settings/api](https://openalex.org/settings/api) |
 | `CIVITAI_API_KEY` | Civitai | модели и LoRA, доступные только после входа, выше лимиты | [civitai.com/user/account](https://civitai.com/user/account) → API Keys |
 
-Hugging Face (кроме gated-моделей), arXiv, реестр нод ComfyUI и Hacker News работают без ключей. Reddit закрыл API для новых
+Hugging Face (кроме gated-моделей), arXiv, YouTube, реестр нод ComfyUI и Hacker News работают без ключей. Reddit закрыл API для новых
 приложений, поэтому Reddit агент ищет своим веб-поиском (`site:reddit.com`).
 
 Вместо файла ключ можно передать переменной окружения при регистрации сервера, она важнее файла:
