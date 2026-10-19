@@ -534,21 +534,29 @@ def model_variants(model_id: str, vram_gb: float | None = None, gpu: str | None 
 def estimate_resources(model_id: str, mode: str = "inference", precision: str | None = None, seq_len: int = 4096,
                        batch: int = 1, lora_rank: int = 16, gradient_checkpointing: bool = True,
                        train_tokens: float | None = None, gpu: str | None = None, vram_gb: float | None = None,
-                       num_gpus: int = 1, kv_cache: str = "bf16") -> dict:
-    """Memory and time for running or training a Hugging Face model, from its real config: VRAM breakdown
-    (weights, KV cache, activations, gradients, optimizer states), whether it fits the GPU (detected, or pass
-    gpu / vram_gb), decode tokens/s, training hours for train_tokens, and what to change if it does not fit.
+                       num_gpus: int = 1, kv_cache: str = "bf16", width: int | None = None,
+                       height: int | None = None, frames: int | None = None, steps: int | None = None,
+                       cfg: float | None = None, variant: str | None = None) -> dict:
+    """Memory and time for running or training a Hugging Face model, from its real config and weights. LLMs: VRAM
+    breakdown (weights, KV cache, activations, gradients, optimizer states), decode tokens/s, training hours for
+    train_tokens. Image / video diffusion (diffusers or ComfyUI repos): each component (denoiser, text encoder,
+    VAE) in every precision the repo has, exact parameters from the safetensors header, latent tokens for
+    width x height x frames, peak VRAM per stage, offload to RAM and its cost, seconds per step and total time.
+    Whether it fits the GPU (detected, or pass gpu / vram_gb), and what to change if it does not.
 
     Args:
         mode: inference | lora | qlora | full
-        precision: bf16 | fp16 | fp8 | int8 | q8 | q6 | q5 | q4 | nf4 | awq | gptq | fp4 (default bf16; nf4 for qlora)
+        precision: LLM bf16 | fp16 | fp8 | int8 | q8 … | nf4 | awq | gptq | fp4; diffusion picks the file of that
+            precision: bf16 | fp8 | int8 | nvfp4 …
         train_tokens: total training tokens (dataset tokens x epochs) for a time estimate
         num_gpus: tensor parallel (inference) or FSDP / ZeRO-3 (full);  kv_cache: bf16 | fp8
+        width / height / frames / steps / cfg: diffusion run (cfg > 1 doubles the work; distilled models use 1)
+        variant: part of the file name to choose among several models in one repo, e.g. "ref2va_pruned"
     """
     from kb.research.ml import estimate_resources as _est
 
     return _est(model_id, mode, precision, max(1, seq_len), max(1, batch), max(1, lora_rank), gradient_checkpointing,
-                train_tokens, gpu, vram_gb, max(1, num_gpus), kv_cache)
+                train_tokens, gpu, vram_gb, max(1, num_gpus), kv_cache, width, height, frames, steps, cfg, variant)
 
 
 @mcp.tool()

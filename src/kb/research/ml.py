@@ -145,7 +145,13 @@ def _kv_bytes_per_token(f: dict[str, Any], kv_bytes: float) -> float:
 def estimate_resources(model_id: str, mode: str = "inference", precision: str | None = None, seq_len: int = 4096,
                        batch: int = 1, lora_rank: int = 16, gradient_checkpointing: bool = True,
                        train_tokens: float | None = None, gpu: str | None = None, vram_gb: float | None = None,
-                       num_gpus: int = 1, kv_cache: str = "bf16") -> dict[str, Any]:
+                       num_gpus: int = 1, kv_cache: str = "bf16", width: int | None = None,
+                       height: int | None = None, frames: int | None = None, steps: int | None = None,
+                       cfg: float | None = None, variant: str | None = None) -> dict[str, Any]:
+    diff = _maybe_diffusion(model_id, mode, precision, width, height, frames, steps, cfg, variant, lora_rank, gpu,
+                            vram_gb)
+    if diff is not None:
+        return diff
     f = model_facts(model_id)
     if f.get("error"):
         return f
@@ -241,6 +247,35 @@ def estimate_resources(model_id: str, mode: str = "inference", precision: str | 
                 out["assumptions"].append("this GPU has no native FP8: weights stored in 8 bits, computed in 16")
     out["if_it_does_not_fit"] = _advice(mode, prec)
     return out
+
+
+def _maybe_diffusion(model_id: str, mode: str, precision: str | None, width: int | None, height: int | None,
+                     frames: int | None, steps: int | None, cfg: float | None, variant: str | None, lora_rank: int,
+                     gpu: str | None, vram_gb: float | None) -> dict[str, Any] | None:
+    """Image / video diffusion repos get their own estimate (components, latent tokens, steps)."""
+    from kb.research.diffusion import _tree, estimate_diffusion, is_diffusion
+
+    rid = _repo(model_id)
+    http = interactive_client(0.05)
+    try:
+        meta = http.get(f"{HF}/api/models/{rid}").json()
+        if "error" in meta:
+            return None
+        files = _tree(http, rid)
+    except Exception:
+        return None
+    finally:
+        http.close()
+    if not is_diffusion(meta, [f["path"] for f in files]):
+        return None
+    hw = local_hardware()
+    g = {"name": gpu, "vram_gb": vram_gb} if (gpu or vram_gb) else (hw.get("gpus") or [None])[0]
+    specs = gpu_specs((g or {}).get("name"))
+    video = bool(frames and frames > 1)
+    return estimate_diffusion(rid, meta, files, mode=mode, precision=precision, width=width or (1280 if video else 1024),
+                              height=height or (720 if video else 1024), frames=frames or 1, steps=steps or 20,
+                              cfg=cfg if cfg is not None else 1.0, variant=variant, lora_rank=lora_rank, gpu=g,
+                              gpu_tflops=specs[0] if specs else None, ram_gb=hw.get("ram_gb"))
 
 
 def _advice(mode: str, prec: str) -> list[str]:

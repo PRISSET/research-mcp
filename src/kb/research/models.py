@@ -264,7 +264,8 @@ def _dtype_hint(meta: dict[str, Any]) -> str | None:
 
 
 COMPONENTS = [(r"vae", "vae"), (r"text_?encoder|t5|umt5|clip|byt5|llm_?encoder|encoder", "text_encoder"),
-              (r"lora", "lora"), (r"controlnet", "controlnet"), (r"upscal|esrgan", "upscaler"),
+              (r"lora", "lora"), (r"controlnet|model_patches", "controlnet"), (r"upscal|esrgan", "upscaler"),
+              (r"embeddings/|textual_inversion", "embedding"),
               (r"mmproj|projector|vision", "vision_projector")]
 MAIN_COMPONENTS = {"model", "diffusion_models", "transformer", "unet", "checkpoints"}
 
@@ -338,7 +339,9 @@ def model_variants(model_id: str, vram_gb: float | None = None, gpu_name: str | 
     if gpu_name:          # planning for another GPU (a rental, a friend's card): judge by its name
         gpu = {"name": gpu_name, "vram_gb": vram_gb, "compute_cap": cc_from_name(gpu_name)}
     vram = vram_gb if vram_gb is not None else (gpu or {}).get("vram_gb")
-    cc = (gpu or {}).get("compute_cap") if (gpu_name or vram_gb is None) else None
+    # vram_gb alone still means the local GPU when it matches its memory; another size is an unknown card
+    same_card = vram_gb is None or abs(vram_gb - ((gpu or {}).get("vram_gb") or -9)) <= 1.0
+    cc = (gpu or {}).get("compute_cap") if (gpu_name or same_card) else None
     http = interactive_client(0.05)
     try:
         meta = http.get(f"{HF}/api/models/{rid}", params={"blobs": "true"}).json()
@@ -399,7 +402,8 @@ def model_variants(model_id: str, vram_gb: float | None = None, gpu_name: str | 
         advice.append(f"FP8 on this GPU: {support['fp8']}")
     if any(v["precision"] == "fp4" for v in variants):
         advice.append(f"FP4 on this GPU: {support['fp4']}")
-    variants.sort(key=lambda v: (v.get("community", False), v["component"], v["quality_rank"], v["size_gb"]))
+    variants.sort(key=lambda v: (v.get("community", False), v["component"] not in MAIN_COMPONENTS, v["component"],
+                                 v["quality_rank"], v["size_gb"]))
     return {
         "model": rid, "hardware": {"gpu": gpu, "vram_gb": vram, "ram_gb": hw.get("ram_gb")} if vram else hw,
         "advice": advice, "variants": variants[:60],
