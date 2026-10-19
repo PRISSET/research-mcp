@@ -219,6 +219,10 @@ def _phrase(core: str, words: int = 12) -> str:
     return " ".join(toks)
 
 
+LOG_PREFIX = re.compile(r"^\W*(?:\d[\d:.TZ+ -]*\s+)?(?:ERROR|ERR|WARN(?:ING)?|INFO|DEBUG|CRITICAL|FATAL)\b(?:\s+[\w:.-]+)?\s*[>:\]|-]?"
+                        r"\s*(?:\[[^\]]*\]\s*)*", re.I)
+
+
 def phrase_candidates(core: str) -> list[str]:
     """Exact message first, then shorter heads: GitHub's phrase search needs a verbatim match."""
     out: list[str] = []
@@ -226,7 +230,19 @@ def phrase_candidates(core: str) -> list[str]:
         p = _phrase(core, n)
         if p and p not in out and len(p.split()) >= 2:
             out.append(p)
+    # a log line "ERROR mod::x > [⛔] Failed to create OAuth client: <cause>": its own head names the failure,
+    # while the cause after the colon is often a generic library message shared by unrelated projects
+    msg = LOG_PREFIX.sub("", core)
+    head = re.split(r":\s", msg, maxsplit=1)[0].strip(" .")
+    if len(head.split()) >= 3 and head not in out and head != msg:
+        out.insert(1 if out else 0, head)
     return out
+
+
+def _repo_of(library: str | None) -> str | None:
+    """'gh:owner/repo', a GitHub URL or 'owner/repo' -> 'owner/repo'; a package name -> None."""
+    s = re.sub(r"^(gh:|github:|https?://github\.com/|github\.com/)", "", (library or "").strip()).split("@")[0]
+    return s.strip("/") if re.fullmatch(r"[\w.-]+/[\w.-]+", s.strip("/")) else None
 
 
 def diagnose_error(db_factory: Any, error: str, library: str | None = None, version: str | None = None,
@@ -252,22 +268,45 @@ def diagnose_error(db_factory: Any, error: str, library: str | None = None, vers
         finally:
             db.close()
 
+    repo = _repo_of(library)
+    name = repo.split("/")[-1] if repo else re.sub(r"[=<>@].*$", "", library or "").strip()
+
+    def mentions(cand: str, got: Any) -> list[dict]:
+        """GitHub's quoted search is loose: keep the hits whose text really contains most of the phrase."""
+        words = set(re.findall(r"[a-z]{3,}", cand.lower()))
+        hits = got.get("results", []) if isinstance(got, dict) else []
+        return [h for h in hits if len(words & set(re.findall(r"[a-z]{3,}", f"{h.get('title')} {h.get('summary')}".lower())))
+                >= 0.6 * len(words)]
+
     def github() -> tuple[str, list[dict], list[dict]]:
-        # One phrase at a time (anonymous search allows 10 a minute): the first that matches wins.
+        # The library's own repo first: there its own failure ("Failed to create OAuth client") matches, while
+        # across GitHub the generic cause
+        # ("error decoding response body") matches unrelated projects. One phrase at a time (anonymous search
+        # allows 10 a minute): the first that matches wins.
+        if repo:
+            for cand in candidates[:3]:
+                issues = mentions(cand, run(github_search, f'"{cand}"', kind="issues", repo=repo, limit=8))
+                if issues:
+                    prs = run(github_search, f'"{cand}"', kind="prs", repo=repo, limit=5)
+                    return cand, issues, prs.get("results", []) if isinstance(prs, dict) else []
         for cand in candidates:
-            got = run(github_search, f'"{cand}"', kind="issues", limit=8)
-            issues = got.get("results", []) if isinstance(got, dict) else []
+            issues = mentions(cand, run(github_search, f'"{cand}"', kind="issues", limit=8))
             if issues:
                 prs = run(github_search, f'"{cand}"', kind="prs", limit=5)
                 return cand, issues, prs.get("results", []) if isinstance(prs, dict) else []
         return candidates[-1], [], []
 
     def web() -> Any:
-        for q in (f'"{phrase}" {library or ""}', f"{phrase} {library or ''}"):
-            got = run(web_search, q.strip(), limit=6)
-            if isinstance(got, dict) and got.get("results"):
-                return got["results"]
-        return got
+        words = set(re.findall(r"[a-z]{4,}", phrase.lower()))
+        got: Any = []
+        for q in (f'"{phrase}" {name}', f"{phrase} {name}"):
+            got = run(web_search, q.strip(), limit=8)
+            hits = [h for h in (got.get("results") or [] if isinstance(got, dict) else [])   # not dictionary pages
+                    if len(words & set(re.findall(r"[a-z]{4,}", f"{h.get('title')} {h.get('snippet')}".lower())))
+                    >= max(2, len(words) // 3)]
+            if hits:
+                return hits
+        return got.get("error") if isinstance(got, dict) and got.get("error") else []
 
     with ThreadPoolExecutor(max_workers=4) as pool:
         gh = pool.submit(github)
