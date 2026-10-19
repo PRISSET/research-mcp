@@ -261,8 +261,6 @@ def paper_block(src: dict[str, Any], notes: str) -> str:
         bits.append(f"{L['stars']} {extra['stars']}")
     if extra.get("downloads"):
         bits.append(f"{extra['downloads']:,} {L['downloads']}".replace(",", " "))
-    if extra.get("license"):
-        bits.append(str(extra["license"]))
     if extra.get("pushed"):
         bits.append(f"{L['pushed']} {extra['pushed']}")
     elif extra.get("updated") and kind != "paper":

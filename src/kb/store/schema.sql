@@ -1,6 +1,6 @@
 -- Sources: papers (keyed "arxiv:<id>", "doi:<doi>", "openalex:<W id>", "s2:<id>") and, with kind != 'paper',
 -- every other researched source: GitHub repos/issues ("gh:…"), Hugging Face repos ("hf:…"), web pages ("web:…"),
--- forum threads ("hn:…", "so:…"). Columns `kind` and `extra` (JSON: stars, downloads, license, …) are added by
+-- forum threads ("hn:…", "so:…"). Columns `kind` and `extra` (JSON: stars, downloads, …) are added by
 -- the migration in db.py so old databases upgrade in place.
 CREATE TABLE IF NOT EXISTS papers (
     id                  TEXT PRIMARY KEY,

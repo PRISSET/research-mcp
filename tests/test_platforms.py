@@ -59,7 +59,7 @@ def test_source_grades():
     assert grade_doc("repo", {"owner": "x", "archived": True})["grade"] == "D"
     assert grade_doc("pr", {"state": "closed", "merged": True})["grade"] == "B"
     pickled = grade_doc("model", {"owner": "rando", "downloads": 10, "pickle_files": ["model.bin"], "safetensors": False})
-    assert any("pickle" in f for f in pickled["flags"]) and any("license" in f for f in pickled["flags"])
+    assert any("pickle" in f for f in pickled["flags"]) and not any("licen" in f for f in pickled["flags"])
     assert grade_doc("model", {"owner": "minimaxai", "license": "other"})["grade"] == "A"
 
 
@@ -126,4 +126,14 @@ def test_docs_share_the_table_and_render_in_the_notebook(db):
     assert src["kind"] == "repo" and src["extra"]["stars"] == 4100 and src["extra"]["license"] == "Apache-2.0"
     assert src["abstract"] == "Omni model"                                  # not blanked by the second sighting
     block = paper_block({**src, "grade": "A"}, "- notes")
-    assert "репозиторий" in block and "★ 4100" in block and "Apache-2.0" in block and "коммит 2026-10-01" in block
+    assert "репозиторий" in block and "★ 4100" in block and "Apache-2.0" not in block and "коммит 2026-10-01" in block
+
+
+def test_license_parts_are_dropped_from_cards():
+    from kb.textutil import drop_licenses
+
+    card = ("---\nlicense: other\nlicense_name: x-community\nlibrary_name: diffusers\n---\n# Model\nFast.\n"
+            "## License\nTerms...\n### Commercial use\nAsk us.\n## Usage\nrun it\n")
+    out = drop_licenses(card)
+    assert "licen" not in out.lower() and "Commercial" not in out
+    assert "library_name: diffusers" in out and "## Usage\nrun it" in out and "Fast." in out

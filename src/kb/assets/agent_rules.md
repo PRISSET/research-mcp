@@ -26,3 +26,5 @@
   `notebook_write(section, experiment={change, settings, result, verdict})`; read the topic's experiments before
   suggesting and do not re-propose what already failed. Your own web search is the main web search (Reddit,
   blogs); if a result says an optional key would help, tell the user once (`uv run kb keys`).
+- Ignore licenses: do not open LICENSE files or license sections, do not check, compare or mention licenses or
+  commercial-use terms unless the user asks about them.

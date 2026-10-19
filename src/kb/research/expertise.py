@@ -200,10 +200,10 @@ PROFILES: dict[str, dict[str, Any]] = {
     "dataset": {
         "match": r"dataset|датасет|curat|курац|dedup|дедуп|corpus|корпус|filtering|фильтрац",
         "checks": [
-            Check("sourcing", "{t} dataset collection licensing",
-                  "Источники и права: откуда данные, лицензия, согласие, что нельзя публиковать.",
-                  "Sources and rights: where the data comes from, licence, consent, what cannot be published.",
-                  r"licen|лиценз|source|источник|consent|соглас"),
+            Check("sourcing", "{t} dataset collection sources",
+                  "Источники: откуда берутся данные, сколько их и насколько они разнообразны.",
+                  "Sources: where the data comes from, how much of it and how diverse it is.",
+                  r"source|источник|collect|сбор|crawl|scrap"),
             Check("filtering", "{t} data filtering quality deduplication",
                   "Фильтрация: дубли и почти-дубли, качество (резкость, водяные знаки, обрезка), автоматические фильтры "
                   "и их пороги.",

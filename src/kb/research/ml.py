@@ -2,8 +2,8 @@
 
 - estimate_resources: VRAM / RAM for inference, LoRA, QLoRA or full fine-tuning of a Hugging Face model (from its
   config.json and real parameter count), training time for N tokens and decode speed on a given GPU;
-- compare_models: architecture, size, context, license, dates and the benchmark rows from each model card side by side;
-- dataset_info: splits, rows, size, columns, sample rows, license, and the models trained on it;
+- compare_models: architecture, size, context, dates and the benchmark rows from each model card side by side;
+- dataset_info: splits, rows, size, columns, sample rows, and the models trained on it;
 - paper_code: the official code, project page and Hugging Face models / datasets / Spaces for a paper.
 
 All estimates are formulas with stated assumptions — the output says which, so the agent can tell the user.
@@ -87,7 +87,7 @@ def model_facts(model_id: str, http: Any = None) -> dict[str, Any]:
     return {
         "id": meta.get("id", rid), "created": (meta.get("createdAt") or "")[:10],
         "updated": (meta.get("lastModified") or "")[:10], "pipeline": meta.get("pipeline_tag"),
-        "library": meta.get("library_name"), "license": card.get("license"), "gated": meta.get("gated") or False,
+        "library": meta.get("library_name"), "gated": meta.get("gated") or False,
         "base_model": card.get("base_model"), "languages": card.get("language"),
         "downloads": meta.get("downloads"), "likes": meta.get("likes"),
         "architecture": (cfg.get("architectures") or [cfg.get("model_type")])[0] if cfg else None,
@@ -371,7 +371,7 @@ def compare_models(model_ids: list[str]) -> dict[str, Any]:
             facts = list(pool.map(one, ids))
     finally:
         http.close()
-    keys = ("created", "params", "active_params", "architecture", "context", "license", "gated", "dtype_on_hub",
+    keys = ("created", "params", "active_params", "architecture", "context", "gated", "dtype_on_hub",
             "pipeline", "downloads", "likes", "base_model")
     table = {k: {f.get("id", "?"): f.get(k) for f in facts} for k in keys}
     return {
@@ -400,7 +400,6 @@ def dataset_info(dataset_id: str, sample_rows: int = 3) -> dict[str, Any]:
             "id": meta.get("id", rid), "created": (meta.get("createdAt") or "")[:10],
             "updated": (meta.get("lastModified") or "")[:10], "downloads": meta.get("downloads"),
             "likes": meta.get("likes"), "gated": meta.get("gated") or False,
-            "license": (meta.get("cardData") or {}).get("license"),
             "tags": [t for t in meta.get("tags") or [] if t.split(":")[0] in
                      ("task_categories", "language", "size_categories", "modality", "format")][:20],
         }
@@ -440,7 +439,7 @@ def dataset_info(dataset_id: str, sample_rows: int = 3) -> dict[str, Any]:
             pass
     finally:
         http.close()
-    out["next"] = "fetch the dataset page for the card (collection method, filtering, known issues, licence terms)"
+    out["next"] = "fetch the dataset page for the card (collection method, filtering, known issues)"
     return out
 
 
@@ -507,6 +506,6 @@ def paper_code(paper: str) -> dict[str, Any]:
                 out["github_mentions"] = "GitHub search unavailable (rate limit): try github_search later"
     finally:
         http.close()
-    out["next"] = ("fetch the official repo (README: install, checkpoints, licence, open issues) before relying on it; "
+    out["next"] = ("fetch the official repo (README: install, checkpoints, open issues) before relying on it; "
                    "an unofficial reimplementation may differ from the paper's numbers")
     return out

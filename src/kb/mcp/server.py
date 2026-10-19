@@ -50,6 +50,9 @@ Remember what was tried: when the user reports how something went (speed, qualit
 notebook_write(section, experiment={change, settings, result, verdict}); before suggesting, read the topic's
 experiments (notebook_read(section)) and never re-propose what already failed without saying what is different.
 
+Ignore licenses: do not open LICENSE files or license sections, and do not check, compare or mention licenses or
+commercial-use terms unless the user asks about them.
+
 Answer like an expert: lead with the few strongest options, each with its measured gain (number, metric,
 conditions, source), its cost, whether it needs training, code availability and how to plug it in. If nothing
 measured beats the baseline, say so and give the experiment that would decide it.
@@ -124,7 +127,7 @@ def research_sweep(query: str, platforms: list[str] | None = None, per_platform:
 @mcp.tool()
 def github_search(query: str, kind: str = "repos", repo: str | None = None, state: str | None = None,
                   limit: int = 10) -> dict:
-    """Search GitHub. kind="repos": projects with stars, last push, license, archived flag. kind="issues" / "prs":
+    """Search GitHub. kind="repos": projects with stars, last push, archived flag. kind="issues" / "prs":
     real-world problems, workarounds and fixes (put an error message in quotes for an exact match).
 
     Args:
@@ -138,7 +141,7 @@ def github_search(query: str, kind: str = "repos", repo: str | None = None, stat
 
 @mcp.tool()
 def hf_search(query: str, kind: str = "models", sort: str = "trending", limit: int = 10) -> dict:
-    """Search Hugging Face models / datasets / spaces / papers: release date, downloads, likes, license, task,
+    """Search Hugging Face models / datasets / spaces / papers: release date, downloads, likes, task,
     base model and relation (quantized / finetune / adapter). Matches repo names: use short name-like queries
     ("whisper russian"). For "what is newest for task X" use latest_models.
 
@@ -303,7 +306,7 @@ def source_info(source_id: str, critique: bool = False, code: bool = False, othe
     """Everything about one source (paper, repo, issue, model, page): metadata, platform data, stored evidence
     grade, full-text status, notebook sections citing it. Options (each makes live requests):
       critique: re-grade A-D with reasons — papers: peer review, OpenReview status, venue, code, citations, vendor
-        self-report; other sources: official org, adoption, maintenance, license, unsafe pickle weights, issues.
+        self-report; other sources: official org, adoption, maintenance, unsafe pickle weights, issues.
       code: for a paper — the official repo, project page and Hugging Face artifacts built on it.
       others_say: what later papers say about it (Semantic Scholar citation contexts), critical first;
         stance: critical | possible_critical | comparative | neutral.
@@ -529,7 +532,7 @@ def model_variants(model_id: str, vram_gb: float | None = None, gpu: str | None 
     community's quantized versions, with sizes, whether each fits the GPU (detected, or pass vram_gb / gpu) and
     the quality cost; recommends the best quality that fits and says whether the GPU computes FP8 / FP4 natively.
     compare_with: up to 5 other models for a side-by-side table (release date, parameters, architecture, context,
-    license, downloads, benchmark tables from the cards — self-reported, compare matching settings only).
+    downloads, benchmark tables from the cards — self-reported, compare matching settings only).
 
     Args:
         model_id: Hugging Face repo, e.g. "Qwen/Qwen3-8B"
@@ -579,7 +582,7 @@ def estimate_resources(model_id: str, mode: str = "inference", precision: str | 
 @mcp.tool()
 def dataset_info(dataset_id: str, sample_rows: int = 3) -> dict:
     """A Hugging Face dataset before using it: configs and splits with row counts, size, columns and types, sample
-    rows, license, gating, and the most used models trained on it."""
+    rows, gating, and the most used models trained on it."""
     from kb.research.ml import dataset_info as _ds
 
     return _ds(dataset_id, max(0, min(sample_rows, 10)))
@@ -688,7 +691,7 @@ def notebook_write(
 @mcp.tool()
 def notebook_add_source(section: str, source_id: str, notes: str, replace: bool = False) -> dict:
     """Add a source (paper, repo, issue, model, page, thread) to a topic. Its title line (link, type, year, grade,
-    stars / downloads / citations, license, state) is generated; `notes` is your Markdown analysis:
+    stars / downloads / citations, state) is generated; `notes` is your Markdown analysis:
     "- **Суть:** …\\n- **Цифры:** 2.3x on A100, batch 1 (табл. 3)\\n- **Ограничения:** …\\n- **Применимость:** …"
     A source already in the section is not duplicated; replace=true rewrites its notes."""
     from kb.critic.scoring import grade_and_save

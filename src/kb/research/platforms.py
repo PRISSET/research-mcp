@@ -19,6 +19,7 @@ from kb.critic.sources import grade_doc
 from kb.research.docs import Doc, index_text, upsert_doc
 from kb.research.sources import interactive_client
 from kb.store import Database
+from kb.textutil import drop_licenses
 
 GH_API = "https://api.github.com"
 HF = "https://huggingface.co"
@@ -43,7 +44,7 @@ def _save(db: Database, d: Doc) -> dict[str, Any]:
             "date": d.published, **{k: v for k, v in d.extra.items() if k in SHOWN}, "grade": g["grade"], "flags": g["flags"]}
 
 
-SHOWN = {"created", "age_months", "relation", "stars", "forks", "pushed", "archived", "license", "language", "state", "merged", "comments", "repo",
+SHOWN = {"created", "age_months", "relation", "stars", "forks", "pushed", "archived", "language", "state", "merged", "comments", "repo",
          "downloads", "likes", "pipeline", "library", "params", "gated", "base_model", "points", "score", "answered",
          "updated", "author", "type", "base_models", "trained_words", "nsfw", "status", "model", "comments_n",
          "channel", "views", "duration", "age"}
@@ -56,7 +57,7 @@ def repo_doc(r: dict[str, Any]) -> Doc:
         id=f"gh:{r['full_name'].lower()}", kind="repo", title=r["full_name"], url=r["html_url"], platform="github",
         summary=r.get("description") or "", published=_date(r.get("created_at")), authors=[r["owner"]["login"]],
         extra={"stars": r.get("stargazers_count"), "forks": r.get("forks_count"), "pushed": _date(r.get("pushed_at")),
-               "archived": r.get("archived"), "fork": r.get("fork"), "license": (r.get("license") or {}).get("spdx_id"),
+               "archived": r.get("archived"), "fork": r.get("fork"),
                "language": r.get("language"), "topics": r.get("topics") or [], "open_issues": r.get("open_issues_count"),
                "owner": r["owner"]["login"]},
     )
@@ -149,6 +150,7 @@ def github_read(db: Database, repo: str, issue: int | None = None, path: str | N
                 except Exception:
                     pass
             text = "\n\n".join(p for p in parts if p)
+        text = drop_licenses(text)
         brief = _save(db, d)
         idx = index_text(db, d.id, text, "github", d.title)
         db.commit()
@@ -174,9 +176,8 @@ def _hf_doc(item: dict[str, Any], kind: str) -> Doc:
     prefix = {"model": "hf:", "dataset": "hf-dataset:", "space": "hf-space:"}[kind]
     url = f"{HF}/{'datasets/' if kind == 'dataset' else 'spaces/' if kind == 'space' else ''}{rid}"
     card = item.get("cardData") or {}
-    lic = card.get("license") or next((t.split(":", 1)[1] for t in tags if t.startswith("license:")), None)
     base = [t.split(":", 2)[-1] for t in tags if t.startswith("base_model:") and t.count(":") >= 2]
-    extra = {"downloads": item.get("downloads"), "likes": item.get("likes"), "license": lic,
+    extra = {"downloads": item.get("downloads"), "likes": item.get("likes"),
              "pipeline": item.get("pipeline_tag"), "library": item.get("library_name"), "gated": item.get("gated"),
              "base_model": sorted(set(base))[:5], "updated": _date(item.get("lastModified")),
              "created": _date(item.get("createdAt")), "owner": rid.split("/")[0] if "/" in rid else rid}
@@ -263,7 +264,7 @@ def _hf_keywords(query: str) -> list[str]:
 
 
 def hf_read(db: Database, repo_id: str, kind: str = "model") -> dict[str, Any]:
-    """Model / dataset / space card + metadata (license, gating, parameters, file formats, base models)."""
+    """Model / dataset / space card + metadata (gating, parameters, file formats, base models)."""
     rid = re.sub(r"^https?://huggingface\.co/(datasets/|spaces/)?", "", repo_id.strip()).strip("/")
     api = {"model": "models", "dataset": "datasets", "space": "spaces"}[kind]
     http = interactive_client(0.2)
@@ -272,7 +273,7 @@ def hf_read(db: Database, repo_id: str, kind: str = "model") -> dict[str, Any]:
         d = _hf_doc(meta, kind)
         prefix = {"model": "", "dataset": "datasets/", "space": "spaces/"}[kind]
         try:
-            card = http.get(f"{HF}/{prefix}{rid}/raw/main/README.md").text
+            card = drop_licenses(http.get(f"{HF}/{prefix}{rid}/raw/main/README.md").text)
         except Exception:
             card = ""
         brief = _save(db, d)

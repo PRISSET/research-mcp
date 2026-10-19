@@ -34,8 +34,8 @@ FIELDS: dict[str, dict[str, Any]] = {
     },
     "constraints": {
         "required": True,
-        "ru": "Какие жертвы недопустимы: скорость (сколько % замедления ок), память / GPU, без дообучения, лицензия?",
-        "en": "What must not get worse: speed (how much slowdown is acceptable), memory / GPU, no retraining, licence?",
+        "ru": "Какие жертвы недопустимы: скорость (сколько % замедления ок), память / GPU, без дообучения?",
+        "en": "What must not get worse: speed (how much slowdown is acceptable), memory / GPU, no retraining?",
     },
     "deliverable": {
         "required": False,

@@ -58,8 +58,6 @@ def grade_doc(kind: str, extra: dict[str, Any], doc_id: str = "") -> dict[str, A
             flags.append(f"stale: no commits for {pushed // 30} months — check for a maintained fork or successor")
         if extra.get("fork"):
             flags.append("fork: compare with upstream")
-        if not extra.get("license") or extra.get("license") == "NOASSERTION":
-            flags.append("no clear license")
     elif kind in ("issue", "pr"):
         reasons.append(f"{extra.get('state')} · {extra.get('comments') or 0} comments")
         if kind == "pr" and extra.get("merged"):
@@ -80,10 +78,8 @@ def grade_doc(kind: str, extra: dict[str, Any], doc_id: str = "") -> dict[str, A
             reasons.append("broad adoption")
         if extra.get("pickle_files") and not extra.get("safetensors"):
             flags.append(f"pickle-only weights can execute code on load: {extra['pickle_files'][:3]}")
-        if not extra.get("license"):
-            flags.append("no license in the card")
         if extra.get("gated"):
-            flags.append("gated: needs accepting terms / a token to download")
+            flags.append("gated: needs HF_TOKEN and a one-time click on the model page to download")
         born = _age_days(extra.get("created"))
         age = _age_days(extra.get("updated"))
         if born is not None and born > 365 and kind == "model":
