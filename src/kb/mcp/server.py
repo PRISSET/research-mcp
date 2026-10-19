@@ -58,7 +58,19 @@ measured beats the baseline, say so and give the experiment that would decide it
 def _instructions() -> str:
     from kb.update import update_note
 
-    return INSTRUCTIONS + update_note()
+    return INSTRUCTIONS + update_note() + _news_note()
+
+
+def _news_note() -> str:
+    try:
+        from kb.research import digest
+
+        n = len(digest.pending())
+    except Exception:
+        return ""
+    return (f"\nNews for the user's research topics: {n} new items (models, papers, community, releases) since "
+            "the last session. Call notebook_read() once early and mention the ones that matter for the current "
+            "work.\n") if n else ""
 
 
 mcp = MCPServer("research", instructions=_instructions())
@@ -576,7 +588,9 @@ def dataset_info(dataset_id: str, sample_rows: int = 3) -> dict:
 @mcp.tool()
 def notebook_read(section: str | None = None, query: str | None = None, refresh: bool = False,
                   since: str | None = None) -> dict | list[dict]:
-    """Read RESEARCH.md. No arguments: topics (question, source count, last update) and the local cache size.
+    """Read RESEARCH.md. No arguments: topics (question, source count, last update), the local cache size and
+    `news` — what appeared for the topics since the last session (new models, papers, Civitai, ComfyUI nodes,
+    releases of what they cite), shown once.
     section: one topic in full. query: where earlier research mentions these words. section + refresh=true: what
     appeared since the topic was last updated (or since the ISO date `since`) — its saved queries re-run for
     papers, models, repos and issues, and the models / repos it cites checked for newer versions."""
@@ -595,6 +609,11 @@ def notebook_read(section: str | None = None, query: str | None = None, refresh:
     if stale:
         out["stale"] = stale
         out["hint"] = "Sections older than 30 days: notebook_read(section, refresh=true) before relying on them."
+    from kb.research import digest
+
+    news = _safe(digest.take)
+    if news:
+        out["news"] = news
     return out
 
 
@@ -783,6 +802,9 @@ def main() -> None:
 
     # Nothing is loaded at start: the embedding model loads on the first search and unloads when idle.
     threading.Thread(target=prune_daily, name="prune", daemon=True).start()
+    from kb.research.digest import start_background
+
+    start_background()   # news for the user's topics, at most once a day; read by notebook_read()
     mcp.run()
 
 
