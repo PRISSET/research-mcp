@@ -1,11 +1,12 @@
 """notebook_refresh: what appeared since a RESEARCH.md section was last updated, so research does not go stale.
 
 Re-runs the section's saved queries restricted to the period after its date (papers, Hugging Face models,
-GitHub repos and issues) and checks the models / repos / packages already cited there for newer versions.
+GitHub repos and issues, Reddit threads with the user's Redlib) and checks the models / repos / packages already cited there for newer versions.
 """
 
 from __future__ import annotations
 
+import os
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 from typing import Any
@@ -19,11 +20,15 @@ STALE_DAYS = 30
 def refresh(section: str, since: str | None = None, max_queries: int = 3) -> dict[str, Any]:
     from kb.research.find import find_papers
     from kb.research.platforms import github_search, hf_search
+    from kb.research.reddit import reddit_search
     from kb.research.versions import check_one
 
     sec = notebook.read_section(section)
     start = since or sec.get("updated") or (date.today() - timedelta(days=90)).isoformat()
-    queries = (sec.get("queries") or [sec["title"]])[:max_queries]
+    from kb.research.digest import topic_query
+
+    # the APIs search in English: a topic without saved English queries is searched by the model it is about
+    queries = ([q for q in sec.get("queries") or [] if q.isascii()] or [topic_query(sec)[0] or sec["title"]])[:max_queries]
     have = set(sec["papers"])
     Database().close()   # create / migrate once before the threads
 
@@ -41,6 +46,7 @@ def refresh(section: str, since: str | None = None, max_queries: int = 3) -> dic
 
     jobs: list[tuple[str, str, Any]] = []
     year = int(start[:4])
+    recent = (date.today() - timedelta(days=28)).isoformat()
     for q in queries:
         jobs += [
             ("papers", q, lambda q=q: run(find_papers, q, 8, year)),
@@ -48,9 +54,11 @@ def refresh(section: str, since: str | None = None, max_queries: int = 3) -> dic
             ("repos", q, lambda q=q: run(github_search, f"{q} created:>={start}", "repos", limit=6)),
             ("issues", q, lambda q=q: run(github_search, f"{q} created:>={start}", "issues", limit=6)),
         ]
+        if os.environ.get("REDLIB_URL"):   # practitioners' threads: speed-ups, settings, breakages
+            jobs.append(("reddit", q, lambda q=q: run(reddit_search, q, 8, period="year" if start < recent else "month")))
     with ThreadPoolExecutor(max_workers=8) as pool:
         done = [(kind, q, pool.submit(fn)) for kind, q, fn in jobs]
-        found: dict[str, dict[str, dict[str, Any]]] = {"papers": {}, "models": {}, "repos": {}, "issues": {}}
+        found: dict[str, dict[str, dict[str, Any]]] = {"papers": {}, "models": {}, "repos": {}, "issues": {}, "reddit": {}}
         for kind, q, fut in done:
             res = fut.result()
             items = res.get("results", []) if isinstance(res, dict) else []

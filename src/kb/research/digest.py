@@ -2,7 +2,7 @@
 
 At server start (at most once a day) every recent RESEARCH.md topic is checked for what is new since it was last
 checked: trending new Hugging Face models, new papers, Civitai checkpoints / LoRAs and ComfyUI nodes for generative
-topics, newer releases of the models and repos the topic cites. notebook_read() shows the items once and marks
+topics, Reddit threads (with the user's Redlib), newer releases of the models and repos the topic cites. notebook_read() shows the items once and marks
 them shown, so the agent can open a session with "since last time: …" for the topics the user works on.
 """
 
@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import threading
 from concurrent.futures import ThreadPoolExecutor, wait
@@ -139,6 +140,15 @@ def _section_news(sec: dict[str, Any], since: str, query: str, research: bool) -
                  "why": f"new ComfyUI node, {n.get('stars') or 0} stars" + (" — flagged" if n.get("grade") == "D" else ""),
                  "_rank": n.get("stars") or 0} for n in res]
 
+    def reddit() -> list[dict[str, Any]]:
+        from kb.research.reddit import reddit_search
+
+        res = _run(reddit_search, query, 8, period="month").get("results") or []
+        return [{"kind": "reddit", "title": r["title"], "url": r["url"], "date": r.get("date"),
+                 "why": f"Reddit thread, {r.get('score') or 0} upvotes, {r.get('comments_n') or 0} comments",
+                 "_rank": -n} for n, r in enumerate(res) if (r.get("score") or 0) >= 10]   # Reddit's relevance
+                                                                                         # order: upvotes favour showcases
+
     def cited() -> list[dict[str, Any]]:
         db = Database()
         try:   # ids are lower-cased; the APIs want the original "Org/Name"
@@ -160,7 +170,8 @@ def _section_news(sec: dict[str, Any], since: str, query: str, research: bool) -
                                 "_rank": 1000})
         return out
 
-    jobs = [cited] + ([models] if query else []) + ([papers] if research else [])
+    jobs = ([cited] + ([models] if query else []) + ([papers] if research else [])
+            + ([reddit] if query and os.environ.get("REDLIB_URL") else []))
     if query and GENERATIVE.search(f"{sec['title']} {query} {' '.join(have)}"):
         jobs += [civitai, nodes]
     pool = ThreadPoolExecutor(max_workers=len(jobs))
@@ -174,7 +185,16 @@ def _section_news(sec: dict[str, Any], since: str, query: str, research: bool) -
         elif f in done:
             log.info("digest %s: %s", sec["id"], f.exception())
     items.sort(key=lambda i: i.pop("_rank", 0), reverse=True)
-    return items[:PER_SECTION]
+    # the best of each kind in turn: model likes and Reddit upvotes are not on one scale
+    by: dict[str, list[dict[str, Any]]] = {}
+    for i in items:
+        by.setdefault(i["kind"], []).append(i)
+    out: list[dict[str, Any]] = []
+    while len(out) < PER_SECTION and any(by.values()):
+        for kind in list(by):
+            if by[kind] and len(out) < PER_SECTION:
+                out.append(by[kind].pop(0))
+    return out
 
 
 def build() -> dict[str, Any]:
