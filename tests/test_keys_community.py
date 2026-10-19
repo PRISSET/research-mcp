@@ -87,3 +87,30 @@ def test_hf_token_goes_only_to_hugging_face(monkeypatch):
     c.get("https://huggingface.co/meta-llama/Llama-3.1-8B/resolve/main/config.json")
     c.get("https://api.github.com/repos/a/b")
     assert seen == {"huggingface.co": "Bearer hf_x", "api.github.com": None}
+
+
+def test_searxng_is_the_first_web_engine(monkeypatch):
+    import httpx
+
+    from kb.research import web
+
+    assert not web.has_engine()
+    monkeypatch.setenv("SEARXNG_URL", "http://127.0.0.1:9")
+    assert web.has_engine()
+
+    class Fake:
+        def get(self, url, params=None):
+            assert url == "http://127.0.0.1:9/search" and params["format"] == "json"
+            return httpx.Response(200, json={"results": [
+                {"title": "AVA", "url": "https://research.google.com/ava/", "content": "atomic visual actions"},
+                {"title": "bad", "url": "javascript:x"}]})
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(web, "interactive_client", lambda *a, **k: Fake())
+    assert web._searxng("atomic actions", 5) == [
+        {"title": "AVA", "url": "https://research.google.com/ava/", "snippet": "atomic visual actions", "date": None}]
+    from kb.store import Database
+
+    assert "blocks" in web.fetch_url(Database(), "https://www.reddit.com/r/x/comments/1/")["error"]

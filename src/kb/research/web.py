@@ -132,8 +132,28 @@ def _bing(query: str, limit: int) -> list[dict[str, str]]:
     return out
 
 
+def _searxng(query: str, limit: int) -> list[dict[str, str]]:
+    """The user's own SearXNG (metasearch over Google, Bing, Brave…): free, no limits. Needs its JSON API on."""
+    http = interactive_client(0.0)
+    try:
+        data = http.get(os.environ["SEARXNG_URL"].rstrip("/") + "/search",
+                        params={"q": query, "format": "json", "language": "en"}).json()
+    finally:
+        http.close()
+    return [{"title": r.get("title") or r.get("url"), "url": r["url"], "snippet": r.get("content") or "",
+             "date": (r.get("publishedDate") or "")[:10] or None}
+            for r in data.get("results") or [] if r.get("url", "").startswith("http")][:limit]
+
+
+def has_engine() -> bool:
+    """A web search worth calling by default: SearXNG, Tavily or Brave (keyless scraping returns noise)."""
+    return any(os.environ.get(k) for k in ("SEARXNG_URL", "TAVILY_API_KEY", "BRAVE_API_KEY"))
+
+
 def web_search(db: Database, query: str, limit: int = 10) -> dict[str, Any]:
     engines = []
+    if os.environ.get("SEARXNG_URL"):
+        engines.append(("searxng", _searxng))
     if os.environ.get("BRAVE_API_KEY"):
         engines.append(("brave", _brave))
     if os.environ.get("TAVILY_API_KEY"):
@@ -250,6 +270,9 @@ def fetch_url(db: Database, url: str) -> dict[str, Any]:
     if m := HN_ITEM.search(url):
         return _hn_thread(db, m.group(1))
 
+    if re.search(r"(^|//|\.)reddit\.com/", url):   # blocks every non-browser client, even with a browser TLS print
+        return {"url": url, "error": "Reddit blocks direct reads", "next": "use the search snippet, or read the "
+                "thread with your own fetch tool and cite it from there"}
     http = interactive_client(0.0, {"User-Agent": BROWSER_UA})
     try:
         r = http.get(url)

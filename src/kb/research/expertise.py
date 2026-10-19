@@ -363,7 +363,9 @@ def _search_all(fs: list[dict[str, Any]]) -> tuple[dict[tuple[int, str, str], An
     from kb.research.platforms import github_search
     from kb.research.web import web_search
 
-    web = bool(os.environ.get("TAVILY_API_KEY") or os.environ.get("BRAVE_API_KEY"))
+    from kb.research.web import has_engine
+
+    web = has_engine()
 
     jobs: dict[tuple[int, str, str], Any] = {}
     Database().close()   # create / migrate once before the threads
@@ -590,7 +592,9 @@ def study_topic(db: Database, topic: str, task: str | None = None, terms: list[s
             out["playbook"] = readiness(db, section, depth)
         except Exception as e:   # notebook errors are reported, not fatal
             out["playbook"] = {"error": str(e)}
-    if not (os.environ.get("TAVILY_API_KEY") or os.environ.get("BRAVE_API_KEY")):
+    from kb.research.web import has_engine
+
+    if not has_engine():
         out["web_for_your_own_search"] = [q for f in fs for q in f.get("web", [])] + [f"{topic} site:reddit.com"]
     failed = [k for k, v in status.items() if v != "ok"]
     if failed:

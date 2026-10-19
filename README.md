@@ -88,7 +88,7 @@ curl -fsSL https://raw.githubusercontent.com/PRISSET/research-mcp/main/scripts/i
 | RESEARCH.md | `notebook_read`, `notebook_write`, `notebook_add_source` |
 
 Источники: OpenAlex, arXiv, Semantic Scholar (с ключом), GitHub, Hugging Face, Civitai, реестр нод ComfyUI, Hacker
-News, Stack Overflow, веб (Tavily / Brave с ключом; без ключа агент ищет своим веб-поиском, включая Reddit). Каждому источнику ставится оценка от A (официальный) до D (заброшенный или
+News, Stack Overflow, веб (SearXNG, Tavily или Brave; без них агент ищет своим веб-поиском, включая Reddit). Каждому источнику ставится оценка от A (официальный) до D (заброшенный или
 спорный).
 
 Расчёты `estimate_resources` сделаны по формулам, а не по замерам. Погрешность обычно до 15%, допущения
@@ -136,6 +136,23 @@ tool_timeout_sec = 300
 { "mcpServers": { "research": { "command": "uv", "args": ["--directory", "/путь/к/research-mcp", "run", "research-mcp"] } } }
 ```
 
+## Веб-поиск
+
+Без настройки агент ищет в вебе своим поиском (WebSearch в Claude Code), а MCP подсказывает ему запросы и читает
+найденные страницы. Свой встроенный поиск без ключей у MCP плохой: DuckDuckGo блокирует его как бота, а Bing
+отдаёт нерелевантные страницы. Чтобы встроенный поиск работал бесплатно и без лимитов, поставьте локальный
+[SearXNG](https://github.com/searxng/searxng). Это метапоиск, который опрашивает Google, Bing, Brave и другие
+поисковики и объединяет результаты. Docker не нужен:
+
+```bash
+cd ~/research-mcp && uv run kb searxng install     # или установщик с флагом --searxng
+```
+
+Команда ставит SearXNG в `~/.local/share/research-mcp/searxng` (отдельный venv, только `127.0.0.1:8888`), на
+Linux включает пользовательский сервис `research-searxng` и сама прописывает `SEARXNG_URL`. Удалить:
+`uv run kb searxng uninstall`. Свой SearXNG на другом адресе задаётся через `kb keys set SEARXNG_URL http://…`
+(в его `settings.yml` должен быть включён формат `json`). Порядок движков: SearXNG, Tavily, Brave.
+
 ## Ключи
 
 Работает и без ключей. Ключи необязательные и бесплатные (кроме Brave): каждый включает или улучшает одну
@@ -154,6 +171,7 @@ uv run kb keys set TAVILY_API_KEY ""            # удалить ключ
 
 | Ключ | Площадка | Что даёт | Где получить |
 |---|---|---|---|
+| `SEARXNG_URL` | веб-поиск | адрес своего SearXNG: бесплатно и без лимитов; заполняется сам при `kb searxng install` | см. «Веб-поиск» |
 | `TAVILY_API_KEY` | веб-поиск | встроенный поиск для агентов; без ключа агент ищет своим веб-поиском. Бесплатный план без карты | [app.tavily.com](https://app.tavily.com) |
 | `BRAVE_API_KEY` | веб-поиск | поиск Brave вместо Tavily или вместе с ним; нужна карта, есть ежемесячный бесплатный кредит | [api-dashboard.search.brave.com](https://api-dashboard.search.brave.com) |
 | `GITHUB_TOKEN` | GitHub | репозитории и issues: 5000 запросов в час вместо 60. Хватает токена без прав (classic, без галочек) | [github.com/settings/tokens](https://github.com/settings/tokens) |

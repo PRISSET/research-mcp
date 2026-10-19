@@ -11,7 +11,6 @@ included — its API is closed to new apps).
 
 from __future__ import annotations
 
-import os
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
@@ -70,7 +69,7 @@ def community(query: str, parts: set[str], n: int) -> dict[str, Any]:
 
 def web_queries(query: str) -> dict[str, Any]:
     return {"use_your_own_search": [query, f"{query} site:reddit.com", f"{query} review OR comparison OR benchmark"],
-            "note": "Built-in web search is off without TAVILY_API_KEY / BRAVE_API_KEY (scraped results are noise). Run "
+            "note": "Built-in web search is off without SearXNG / TAVILY_API_KEY / BRAVE_API_KEY (scraped results are noise). Run "
                     "these in your own web search and pass the useful pages to fetch(urls=[…]) so they are cached "
                     "and citable; platforms=['web'] forces the scraper."}
 
@@ -88,7 +87,9 @@ def research_sweep(query: str, platforms: list[str] | None = None, per_platform:
         use.append("community")
     if "community" in use and not parts:
         parts = {"discussions", "hn"} | ({"civitai", "nodes"} if GENERATIVE.search(query) else set())
-    has_web_key = bool(os.environ.get("TAVILY_API_KEY") or os.environ.get("BRAVE_API_KEY"))
+    from kb.research.web import has_engine
+
+    has_web_key = has_engine()
     forced_web = "web" in asked
     n = max(3, min(per_platform, 15))
     jobs = {
@@ -113,7 +114,7 @@ def research_sweep(query: str, platforms: list[str] | None = None, per_platform:
     out = {k: slim(v) for k, v in results.items()}
     if "papers" in out and isinstance(results["papers"], dict):
         out["papers_sources"] = results["papers"].get("sources")
-    hint = missing_hint(["TAVILY_API_KEY", "GITHUB_TOKEN", "S2_API_KEY"])
+    hint = missing_hint(["SEARXNG_URL", "GITHUB_TOKEN", "S2_API_KEY"] if not has_web_key else ["GITHUB_TOKEN", "S2_API_KEY"])
     return {
         "query": query, **out,
         "how_to_use": (

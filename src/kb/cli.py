@@ -89,6 +89,27 @@ def keys_set(name: str, value: str = typer.Argument("", help="empty removes the 
     console.print(f"{'saved' if value else 'removed'}: {name} in {keys.set_key(name, value)} — restart the agent session")
 
 
+searxng_app = typer.Typer(help="Local SearXNG for free, keyless web search (no Docker)", no_args_is_help=True)
+app.add_typer(searxng_app, name="searxng")
+
+
+@searxng_app.command("install")
+def searxng_install() -> None:
+    """Install (or update) SearXNG in ~/.local/share/research-mcp/searxng and point research-mcp at it."""
+    from kb import searxng
+
+    how = searxng.install()
+    console.print(f"[green]SearXNG ready[/] at {searxng.url()} — {how}. SEARXNG_URL saved; restart the agent session.")
+
+
+@searxng_app.command("uninstall")
+def searxng_uninstall() -> None:
+    from kb import searxng
+
+    searxng.uninstall()
+    console.print("SearXNG removed, SEARXNG_URL cleared")
+
+
 @app.command()
 def stats() -> None:
     """Size of the local base and the notebook."""

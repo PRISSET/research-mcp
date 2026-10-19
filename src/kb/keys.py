@@ -16,6 +16,9 @@ from pathlib import Path
 from typing import Any
 
 KEYS: list[dict[str, str]] = [
+    {"name": "SEARXNG_URL", "improves": "free web search without limits through your own SearXNG (Google, Bing, "
+                                        "Brave… merged); `uv run kb searxng install` sets it up and fills this in",
+     "get": "uv run kb searxng install"},
     {"name": "TAVILY_API_KEY", "improves": "web search built for agents instead of scraping DuckDuckGo / Bing; free "
                                            "plan without a card", "get": "https://app.tavily.com"},
     {"name": "BRAVE_API_KEY", "improves": "web search (Brave index); needs a card, monthly free credit",
