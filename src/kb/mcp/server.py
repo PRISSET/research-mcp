@@ -222,13 +222,14 @@ def _save_candidates(db: Database, section: str, results: list[dict]) -> list[st
 
 @mcp.tool()
 def study_topic(topic: str, task: str | None = None, terms: list[str] | None = None, kinds: list[str] | None = None,
-                read: int = 10, section: str | None = None, depth: str = "normal") -> dict:
+                read: int = 10, section: str | None = None, depth: str = "normal", rounds: int = 2) -> dict:
     """Learn a field like a specialist before advising on practical work in it (an annotation schema, a dataset,
     training, evaluation, a pipeline). Splits the topic into facets — foundations, reference datasets / systems,
     each concept in `terms`, the decisions every such project must make (from a checklist for the task kind),
     practices, pitfalls, tools — searches papers (surveys and canonical works welcome), web guides, forums and
     repos for each, reads the best `read` sources in full and returns the passages that answer each facet, plus
-    the decisions to settle with the user. With `section`: whether its specialist knowledge is deep enough to
+    the decisions to settle with the user. A second round follows recent papers that cite the canonical works and
+    re-searches, in other words, the facets the first reading left without passages. With `section`: whether its specialist knowledge is deep enough to
     advise (expert_ready) and what is missing.
 
     Args:
@@ -238,11 +239,13 @@ def study_topic(topic: str, task: str | None = None, terms: list[str] | None = N
         kinds: force checklists: annotation | training | evaluation | dataset | inference | generic
         read: sources to read in full now (0-15)
         section: the RESEARCH.md topic collecting this knowledge;  depth: quick | normal | deep
+        rounds: 1 = one search-and-read pass (faster), 2 = plus the citing / rephrased round
     """
     from kb.research.expertise import study_topic as _study
 
     depth = depth if depth in ("quick", "normal", "deep") else "normal"
-    return _with_db(lambda db: _study(db, topic, task, terms, kinds, max(0, min(read, 15)), section, depth))
+    return _with_db(lambda db: _study(db, topic, task, terms, kinds, max(0, min(read, 15)), section, depth,
+                                    max(1, min(rounds, 2))))
 
 
 @mcp.tool()

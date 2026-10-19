@@ -61,3 +61,24 @@ def test_review_plan_finds_gaps():
     gaps = {g["id"] for g in out["not_addressed"]}
     assert {"agreement", "vocabulary", "guidelines"} <= gaps and "prelabel" not in gaps and "warning" in out
     db.close()
+
+
+def test_second_round_follows_canonical_works_and_rephrases_empty_facets(monkeypatch):
+    from kb.research import expertise as ex
+
+    monkeypatch.setattr("kb.research.web.has_engine", lambda: False)
+    fs = ex.facets("video action annotation", ["atomic actions"], [])
+    names = [f["facet"] for f in fs]
+    per = [[] for _ in fs]
+    per[names.index("reference_works")] = [
+        {"kind": "paper", "title": "HMDB", "citations": 3979, "_oa": "W1"},
+        {"kind": "paper", "title": "tiny", "citations": 5, "_oa": "W2"}]
+    per[names.index("concept: atomic actions")] = [{"kind": "paper", "title": "AVA", "citations": 1014, "_oa": "W3"}]
+    pit = names.index("pitfalls")
+    fs2 = ex._second_round("video action annotation", fs, per, [pit])
+    cites = [f for f in fs2 if f["papers"][0][1].startswith("cites:")]
+    assert [f["papers"][0][1] for f in cites] == ["cites:W1", "cites:W3"]
+    assert cites[0]["builds_on"] == "HMDB" and cites[0]["of"] == names.index("reference_works")
+    again = [f for f in fs2 if f["of"] == pit]
+    assert again and again[0]["papers"][0][0] != fs[pit]["papers"][0][0]
+    assert "mistakes" in again[0]["papers"][0][0] and "video" in again[0]["papers"][0][0]

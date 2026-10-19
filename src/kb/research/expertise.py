@@ -341,6 +341,10 @@ def _openalex(query: str, mode: str) -> list[Paper]:
 
     oa = sources.OpenAlex()
     try:
+        if mode.startswith("cites:"):   # what the field built on a canonical work: recent papers citing it
+            q = " ".join(_words(query))
+            flt = f"cites:{mode[6:]},from_publication_date:{date.today().year - 3}-01-01"
+            return oa.works_filter(flt + (f",title_and_abstract.search:{q}" if q else ""), 15)
         if mode == "cited":   # the canonical works: most cited among those matching every word
             q = re.sub(r"[,:|]", " ", query)
             return oa.works_filter(f"title_and_abstract.search:{q}", 15)
@@ -359,7 +363,7 @@ def _with_own_db(fn: Any) -> Any:
     return run
 
 
-def _search_all(fs: list[dict[str, Any]]) -> tuple[dict[tuple[int, str, str], Any], dict[str, str]]:
+def _search_all(fs: list[dict[str, Any]], deadline: float = SEARCH_DEADLINE) -> tuple[dict[tuple[int, str, str], Any], dict[str, str]]:
     from kb.research.platforms import github_search
     from kb.research.web import web_search
     from kb.research.youtube import youtube_search
@@ -380,7 +384,7 @@ def _search_all(fs: list[dict[str, Any]]) -> tuple[dict[tuple[int, str, str], An
             jobs[(i, "videos", q)] = pool.submit(_with_own_db(lambda db, q: youtube_search(db, q, 4)), q)
         for q in f.get("repos", []):
             jobs[(i, "repos", q)] = pool.submit(_with_own_db(lambda db, q: github_search(db, q, "repos", limit=5)), q)
-    done, _ = wait(jobs.values(), timeout=SEARCH_DEADLINE)
+    done, _ = wait(jobs.values(), timeout=deadline)
     pool.shutdown(wait=False, cancel_futures=True)
     results, status = {}, {}
     for key, fut in jobs.items():
@@ -402,7 +406,7 @@ def _hits(res: Any, platform: str) -> list[dict[str, Any]]:
     return res.get("results") or [] if isinstance(res.get("results"), list) else []
 
 
-def _read(picks: list[tuple[str, str]]) -> dict[str, str]:
+def _read(picks: list[tuple[str, str]], deadline: float = READ_DEADLINE) -> dict[str, str]:
     """Read the chosen sources in parallel: ("paper", id) full texts, ("web", url) pages. Returns id -> status."""
     from kb.process.fulltext import fetch_papers
     from kb.research.web import fetch_url
@@ -424,7 +428,7 @@ def _read(picks: list[tuple[str, str]]) -> dict[str, str]:
         return {}
     pool = ThreadPoolExecutor(max_workers=4)
     futs = [pool.submit(one, k, r) for k, r in picks]
-    done, _ = wait(futs, timeout=READ_DEADLINE)
+    done, _ = wait(futs, timeout=deadline)
     pool.shutdown(wait=False, cancel_futures=False)   # unfinished reads still land in the base for later searches
     out = {}
     for (k, r), f in zip(picks, futs, strict=True):
@@ -463,27 +467,18 @@ def readiness(db: Database, section: str, depth: str = "normal") -> dict[str, An
             "expert_ready": not missing, "missing": missing}
 
 
-def study_topic(db: Database, topic: str, task: str | None = None, terms: list[str] | None = None,
-                kinds: list[str] | None = None, read: int = 10, section: str | None = None,
-                depth: str = "normal") -> dict[str, Any]:
+def _rank(db: Database, topic: str, fs: list[dict[str, Any]], results: dict[tuple[int, str, str], Any],
+          per_facet: list[list[dict[str, Any]]], of: list[int] | None = None, cap: int = 3) -> None:
+    """Add the found sources to their facets. Papers are scored per facet by how much of the facet's query they
+    cover (title counts double), meaning and citations; each lands in the one facet it fits best; papers covering
+    under half the words are dropped. `of` maps a search facet to the facet it serves (second round)."""
     from kb.critic.scoring import grade_and_save
-    from kb.process.search import search
     from kb.research.find import _key
     from kb.research.methods import _semantic
 
-    if not topic.strip() or not topic.isascii():
-        return {"error": "pass topic as a short English phrase (e.g. 'video action annotation'); put the user's "
-                         "request in `task` and the field's key terms in `terms`"}
-    context = f"{topic} {task or ''} {' '.join(terms or [])}"
-    profs = profiles_for(context, kinds)
-    checks = checks_for(profs, context)                      # every decision the user's work has to settle
-    studied = checks_for(profiles_for(topic, kinds), context)  # searched: the checklist of the field itself
-    fs = facets(topic, terms, studied)
-    results, status = _search_all(fs)
-
-    # papers: scored per facet by how much of the facet's query they cover (title counts double), meaning and
-    # citations; each paper lands in the one facet it fits best; papers covering under half the words are dropped
+    of = of or list(range(len(fs)))
     today = date.today()
+    have = {it.get("id") for items in per_facet for it in items} | {it.get("url") for items in per_facet for it in items}
     found: dict[str, Paper] = {}
     seen: dict[str, set[int]] = {}
     for (i, platform, _), res in results.items():
@@ -511,41 +506,51 @@ def study_topic(db: Database, topic: str, task: str | None = None, terms: list[s
             s = 0.5 * sim + 0.3 * cover + 0.2 * _cover(qwords, p.title) + 0.03 * math.log10(1 + (p.citation_count or 0))
             if f.get("survey_bonus") and SURVEY.search(p.title or ""):
                 s += 0.08
-            if f["facet"] == "tools" and p.published and (today - p.published).days < 400:
+            if fs[i]["facet"] == "tools" and p.published and (today - p.published).days < 400:
                 s += 0.03
             if k not in best or s > best[k][0]:
                 best[k] = (s, i)
 
-    per_facet: list[list[dict[str, Any]]] = [[] for _ in fs]
     for k, (sc, i) in sorted(best.items(), key=lambda kv: kv[1][0], reverse=True):
-        if sum(x["kind"] == "paper" for x in per_facet[i]) >= 3:
+        target = per_facet[of[i]]
+        if sum(x["kind"] == "paper" for x in target) >= cap:
             continue
         pid, _ = db.upsert_paper(found[k])
+        if pid in have:
+            continue
+        have.add(pid)
         g = grade_and_save(db, pid) or {}
         p = found[k]
-        per_facet[i].append({"id": pid, "kind": "paper", "title": p.title, "year": p.year, "venue": p.venue,
-                             "citations": p.citation_count, "grade": g.get("grade"), "url": p.url,
-                             "relevance": round(sc, 3), "_score": sc,
-                             "_readable": bool(p.arxiv_id or p.pdf_url), "_arxiv": bool(p.arxiv_id)})
+        target.append({"id": pid, "kind": "paper", "title": p.title, "year": p.year, "venue": p.venue,
+                       "citations": p.citation_count, "grade": g.get("grade"), "url": p.url,
+                       "relevance": round(sc, 3), "builds_on": fs[i].get("builds_on"), "_score": sc,
+                       "_readable": bool(p.arxiv_id or p.pdf_url), "_arxiv": bool(p.arxiv_id), "_oa": p.openalex_id})
     db.commit()
     for (i, platform, query), res in results.items():
         if platform == "papers":
             continue
         qwords = _words(query)
-        kept = [h for h in _hits(res, platform)
-                if _cover(qwords, f"{h.get('title')} {h.get('snippet') or h.get('summary') or ''}") >= 0.5]
+        kept = [h for h in _hits(res, platform) if h.get("url") not in have
+                and _cover(qwords, f"{h.get('title')} {h.get('snippet') or h.get('summary') or ''}") >= 0.5]
         for h in kept[:3 if platform == "web" else 2]:
-            per_facet[i].append({"id": h.get("id"), "kind": h.get("kind") or "web", "title": h.get("title"),
-                                 "url": h.get("url"), "grade": h.get("grade"), "_score": 0.45,
-                                 "_readable": platform in ("web", "videos")})
+            have.add(h.get("url"))
+            per_facet[of[i]].append({"id": h.get("id"), "kind": h.get("kind") or "web", "title": h.get("title"),
+                                     "url": h.get("url"), "grade": h.get("grade"), "_score": 0.45,
+                                     "_readable": platform in ("web", "videos")})
 
-    # read the best right away: overall ranking, foundations / reference works / concepts first, at most two per
-    # facet, arXiv before publisher PDFs (often blocked), about a third web guides
+
+def _choose(fs: list[dict[str, Any]], per_facet: list[list[dict[str, Any]]], read: int, done: set[str],
+            prefer: set[int] | None = None) -> list[tuple[str, str]]:
+    """What to read: overall ranking, foundations / reference works / concepts first (or the `prefer` facets),
+    at most two per facet, arXiv before publisher PDFs (often blocked), about a third web guides."""
     order = []
     for i, items in enumerate(per_facet):
-        lead = 0.1 if fs[i]["facet"] in ("foundations", "reference_works") or fs[i]["facet"].startswith("concept") else 0
+        if prefer is not None:
+            lead = 0.15 if i in prefer else 0
+        else:
+            lead = 0.1 if fs[i]["facet"] in ("foundations", "reference_works") or fs[i]["facet"].startswith("concept") else 0
         for it in items:
-            if it["_readable"]:
+            if it["_readable"] and (it["url"] if it["kind"] != "paper" else it["id"]) not in done and not it.get("_read"):
                 order.append((it["_score"] + lead + (0.05 if it.get("_arxiv") else 0), i, it))
     order.sort(key=lambda x: x[0], reverse=True)
     picks: list[tuple[str, str]] = []
@@ -560,25 +565,106 @@ def study_topic(db: Database, topic: str, task: str | None = None, terms: list[s
             if is_web != web_pass or taken.get(i, 0) >= 2 or any(r == ref for _, r in picks):
                 continue
             picks.append(("web" if is_web else "paper", ref))
+            it["_read"] = True
             taken[i] = taken.get(i, 0) + 1
-    read_status = _read(picks[:max(0, min(read, 15))])
-    ok = [r for r, st in read_status.items() if st.startswith(("indexed", "already"))]
-    ok_ids = {(db.get_paper(r) or {"id": r})["id"] for r in ok}
+    return picks[:15]
 
-    out_facets = []
-    used_chunks: set[int] = set()
-    for i, f in enumerate(fs):
-        passages = []
+
+def _ok_ids(db: Database, read_status: dict[str, str]) -> set[str]:
+    ok = [r for r, st in read_status.items() if st.startswith(("indexed", "already"))]
+    return {(db.get_paper(r) or {"id": r})["id"] for r in ok}
+
+
+def _passages(db: Database, fs: list[dict[str, Any]], ok_ids: set[str]) -> list[list[dict[str, Any]]]:
+    """Per facet, up to two passages from what was read that answer its question (each passage used once)."""
+    from kb.process.search import search
+
+    out: list[list[dict[str, Any]]] = []
+    used: set[int] = set()
+    for f in fs:
+        passages: list[dict[str, Any]] = []
         if ok_ids:
             try:
                 for h in search(db, f["question"], k=4, paper_ids=ok_ids, per_paper=1):
-                    if h["chunk_id"] in used_chunks or len(passages) >= 2:
+                    if h["chunk_id"] in used or len(passages) >= 2:
                         continue
-                    used_chunks.add(h["chunk_id"])
+                    used.add(h["chunk_id"])
                     passages.append({"chunk_id": h["chunk_id"], "source": h["paper_id"], "citation": h["citation"],
                                      "text": " ".join(h["text"].split())[:450]})
             except Exception as e:
                 log.info("passage search failed: %s", e)
+        out.append(passages)
+    return out
+
+
+def _rephrase(question: str, topic: str) -> str:
+    """The facet's question as plain search words: another phrasing than the templated first queries."""
+    words = [w for w in re.findall(r"[a-z0-9][a-z0-9-]+", question.lower()) if w not in STOP]
+    tw = [w for w in re.findall(r"[a-z0-9][a-z0-9-]+", topic.lower()) if w not in STOP]
+    rest = [w for w in words if w not in tw]
+    return " ".join(dict.fromkeys(rest[:5] + tw))
+
+
+def _second_round(topic: str, fs: list[dict[str, Any]], per_facet: list[list[dict[str, Any]]],
+                  empty: list[int]) -> list[dict[str, Any]]:
+    """Searches for round two: papers citing the canonical works of the field (from the last three years, most
+    cited first: what the field built on them), and a rephrased search for every facet left without passages."""
+    from kb.research.web import has_engine
+
+    out: list[dict[str, Any]] = []
+    canon = sorted((it for i, items in enumerate(per_facet) for it in items
+                    if it["kind"] == "paper" and it.get("_oa") and (it.get("citations") or 0) >= 100
+                    and (fs[i]["facet"] in ("foundations", "reference_works") or fs[i]["facet"].startswith("concept"))),
+                   key=lambda it: it.get("citations") or 0, reverse=True)
+    for it in canon[:3]:
+        i = next(j for j, items in enumerate(per_facet) if it in items)
+        out.append({"of": i, "facet": fs[i]["facet"], "question": fs[i]["question"], "builds_on": it["title"],
+                    "papers": [(topic, f"cites:{it['_oa']}")]})
+    web = has_engine()
+    for i in empty:
+        q = _rephrase(fs[i]["question"], topic)
+        if not q or q == topic.lower():
+            continue
+        f = {"of": i, "facet": fs[i]["facet"], "question": fs[i]["question"], "papers": [(q, "rel"), (q, "recent")]}
+        if web:
+            f["web"] = [q]
+        out.append(f)
+    return out
+
+
+def study_topic(db: Database, topic: str, task: str | None = None, terms: list[str] | None = None,
+                kinds: list[str] | None = None, read: int = 10, section: str | None = None,
+                depth: str = "normal", rounds: int = 2) -> dict[str, Any]:
+    if not topic.strip() or not topic.isascii():
+        return {"error": "pass topic as a short English phrase (e.g. 'video action annotation'); put the user's "
+                         "request in `task` and the field's key terms in `terms`"}
+    context = f"{topic} {task or ''} {' '.join(terms or [])}"
+    profs = profiles_for(context, kinds)
+    checks = checks_for(profs, context)                      # every decision the user's work has to settle
+    studied = checks_for(profiles_for(topic, kinds), context)  # searched: the checklist of the field itself
+    fs = facets(topic, terms, studied)
+    results, status = _search_all(fs)
+
+    per_facet: list[list[dict[str, Any]]] = [[] for _ in fs]
+    _rank(db, topic, fs, results, per_facet)
+    read_status = _read(_choose(fs, per_facet, read, set()))
+
+    # second round: what the canonical works led to (recent papers citing them) and other phrasings for the
+    # facets the first reading did not answer
+    if rounds > 1 and read:
+        ok_ids = _ok_ids(db, read_status)
+        empty = [i for i, ps in enumerate(_passages(db, fs, ok_ids)) if not ps]
+        fs2 = _second_round(topic, fs, per_facet, empty)
+        if fs2:
+            results2, status2 = _search_all(fs2, SEARCH_DEADLINE * 0.6)
+            status.update({f"round 2 {k}": v for k, v in status2.items()})
+            _rank(db, topic, fs2, results2, per_facet, of=[f["of"] for f in fs2], cap=5)
+            more = _choose(fs, per_facet, max(3, read // 2), set(read_status), prefer=set(empty))
+            read_status.update(_read(more, READ_DEADLINE * 0.6))
+    ok_ids = _ok_ids(db, read_status)
+
+    out_facets = []
+    for i, (f, passages) in enumerate(zip(fs, _passages(db, fs, ok_ids), strict=True)):
         srcs = [{k: v for k, v in it.items() if not k.startswith("_") and v not in (None, "")} for it in per_facet[i]]
         for s in srcs:
             if s.get("id") in ok_ids:
