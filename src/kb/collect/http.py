@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 from typing import Any
 
@@ -62,6 +63,10 @@ class RateLimitedClient:
         return resp
 
     def _request(self, method: str, url: str, **kwargs: Any) -> httpx.Response:
+        token = os.environ.get("HF_TOKEN")
+        if token and "huggingface.co/" in url and "Authorization" not in self._client.headers:
+            # gated models (Llama, Gemma, some FLUX…) answer 401 for cards, configs and weight indexes without it
+            kwargs["headers"] = {"Authorization": f"Bearer {token}", **(kwargs.get("headers") or {})}
         for attempt in range(self.max_retries + 1):
             self._wait()
             try:

@@ -22,6 +22,10 @@ KEYS: list[dict[str, str]] = [
      "get": "https://api-dashboard.search.brave.com"},
     {"name": "GITHUB_TOKEN", "improves": "GitHub search and issues: 5000 requests / hour instead of 60; a token "
                                          "with no scopes is enough", "get": "https://github.com/settings/tokens"},
+    {"name": "HF_TOKEN", "improves": "Hugging Face: gated models (Llama, Gemma, some FLUX…) — their cards, configs "
+                                     "and weight sizes for fetch, model_variants and estimate_resources, which answer "
+                                     "401 without it; higher API limits (anonymous: 500 requests / 5 min); a free "
+                                     "read token", "get": "https://huggingface.co/settings/tokens"},
     {"name": "S2_API_KEY", "improves": "Semantic Scholar in paper search, citation graph and 'what others say' (off "
                                        "without a key: the shared pool answers 429 almost always); free",
      "get": "https://www.semanticscholar.org/product/api#api-key-form"},

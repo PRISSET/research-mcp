@@ -72,3 +72,18 @@ def test_sweep_without_a_web_key_hands_queries_to_the_agent(monkeypatch):
     out = sweep.research_sweep("qwen image lora", platforms=["civitai"])
     assert set(out) >= {"community"} and "web" not in out
     assert "site:reddit.com" in sweep.web_queries("x")["use_your_own_search"][1]
+
+
+def test_hf_token_goes_only_to_hugging_face(monkeypatch):
+    import httpx
+
+    from kb.collect.http import RateLimitedClient
+
+    seen = {}
+    c = RateLimitedClient(0.0, use_cache=False)
+    c._client = httpx.Client(transport=httpx.MockTransport(
+        lambda r: seen.__setitem__(r.url.host, r.headers.get("authorization")) or httpx.Response(200)))
+    monkeypatch.setenv("HF_TOKEN", "hf_x")
+    c.get("https://huggingface.co/meta-llama/Llama-3.1-8B/resolve/main/config.json")
+    c.get("https://api.github.com/repos/a/b")
+    assert seen == {"huggingface.co": "Bearer hf_x", "api.github.com": None}

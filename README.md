@@ -157,11 +157,12 @@ uv run kb keys set TAVILY_API_KEY ""            # удалить ключ
 | `TAVILY_API_KEY` | веб-поиск | встроенный поиск для агентов; без ключа агент ищет своим веб-поиском. Бесплатный план без карты | [app.tavily.com](https://app.tavily.com) |
 | `BRAVE_API_KEY` | веб-поиск | поиск Brave вместо Tavily или вместе с ним; нужна карта, есть ежемесячный бесплатный кредит | [api-dashboard.search.brave.com](https://api-dashboard.search.brave.com) |
 | `GITHUB_TOKEN` | GitHub | репозитории и issues: 5000 запросов в час вместо 60. Хватает токена без прав (classic, без галочек) | [github.com/settings/tokens](https://github.com/settings/tokens) |
+| `HF_TOKEN` | Hugging Face | закрытые (gated) модели — Llama, Gemma, часть FLUX: без токена их карточки, конфиги и размеры весов отвечают 401, и `fetch`, `model_variants`, `estimate_resources` их не видят; выше лимит API (без токена 500 запросов за 5 минут). Токен с правом Read; доступ к самой gated-модели нужно один раз принять на её странице | [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) |
 | `S2_API_KEY` | Semantic Scholar | включает его в поиск статей, граф цитирований и «что пишут другие»; без ключа он выключен | [semanticscholar.org/product/api](https://www.semanticscholar.org/product/api#api-key-form) |
 | `OPENALEX_API_KEY` | OpenAlex | поиск статей: суточный лимит в 10 раз больше | [openalex.org/settings/api](https://openalex.org/settings/api) |
 | `CIVITAI_API_KEY` | Civitai | модели и LoRA, доступные только после входа, выше лимиты | [civitai.com/user/account](https://civitai.com/user/account) → API Keys |
 
-Hugging Face, arXiv, реестр нод ComfyUI и Hacker News работают без ключей. Reddit закрыл API для новых
+Hugging Face (кроме gated-моделей), arXiv, реестр нод ComfyUI и Hacker News работают без ключей. Reddit закрыл API для новых
 приложений, поэтому Reddit агент ищет своим веб-поиском (`site:reddit.com`).
 
 Вместо файла ключ можно передать переменной окружения при регистрации сервера, она важнее файла:
