@@ -155,6 +155,109 @@ def redlib_uninstall() -> None:
     console.print("Redlib removed, REDLIB_URL cleared")
 
 
+guard_app = typer.Typer(help="Code guard: task ledger + Claude Code hooks (open items on every prompt, no "
+                             "finishing while items are open or code is unreviewed)", no_args_is_help=True)
+app.add_typer(guard_app, name="guard")
+
+
+@guard_app.command("install")
+def guard_install() -> None:
+    """Add the hooks to ~/.claude/settings.json (other hooks and settings stay; a backup is written)."""
+    from kb import guard
+
+    console.print(f"[green]Code guard hooks added[/] to {guard.install()}. They apply to new Claude Code sessions.")
+
+
+@guard_app.command("uninstall")
+def guard_uninstall() -> None:
+    from kb import guard
+
+    console.print("hooks removed" if guard.uninstall() else f"no code-guard hooks in {guard.settings_path()}")
+
+
+@guard_app.command("show")
+def guard_show(project: str = typer.Argument(".", help="repository path")) -> None:
+    """The task ledger of a project."""
+    from kb import guard
+
+    led = guard.update(str(Path(project).resolve()), show_all=True)
+    for i in led["items"]:
+        console.print(guard._line(i) + f"  [{i['status']}]")
+    if not led["items"]:
+        console.print(f"empty ledger for {led['project']}")
+
+
+pack_app = typer.Typer(help="Knowledge packs: trainer docs, issues and training recipes of one field, "
+                            "updated daily in parts", no_args_is_help=True)
+app.add_typer(pack_app, name="pack")
+
+
+def _print_report(report: dict) -> None:
+    for name, r in report.items():
+        if r.get("error"):
+            console.print(f"[yellow]{name}[/]: {r['error']}")
+        elif r.get("status"):
+            console.print(f"{name}: v{r['version']} {r['status']}")
+        else:
+            console.print(f"[green]{name}[/]: v{r['from']} -> v{r['to']} ({r['downloaded']}, "
+                          f"{r['bytes'] / 1e6:.1f} MB): {r['written']} written, {r['deleted']} deleted, "
+                          f"{r['unchanged']} unchanged; vectors: {r['vectors']}")
+
+
+@pack_app.command("list")
+def pack_list() -> None:
+    """Installed and published packs."""
+    from kb.packs import client
+
+    s = client.status()
+    t = Table("pack", "installed", "published", "documents", "recipes", "download", "about")
+    avail = s.get("available") if isinstance(s.get("available"), dict) and "error" not in s["available"] else {}
+    for name in sorted(set(avail) | set(s["installed"])):
+        a, i = avail.get(name) or {}, s["installed"].get(name)
+        t.add_row(name, f"v{i['version']}" if i else "-", f"v{a['version']}" if a else "-", str(a.get("docs", "")),
+                  str(a.get("recipes", "")), f"{a['bytes'] / 1e6:.0f} MB" if a else "", (a.get("title") or "")[:60])
+    console.print(t)
+    if isinstance(s.get("available"), dict) and s["available"].get("error"):
+        console.print(f"[yellow]{s['available']['error']}[/]")
+
+
+@pack_app.command("install")
+def pack_install(names: list[str]) -> None:
+    """Download packs (the snapshot once; later updates download only the changes)."""
+    from kb.packs import client
+
+    _print_report(client.update(names, install=True))
+
+
+@pack_app.command("update")
+def pack_update(names: list[str] = typer.Argument(None)) -> None:
+    """Bring installed packs up to date (the server also does this daily)."""
+    from kb.packs import client
+
+    _print_report(client.update(names or None))
+
+
+@pack_app.command("remove")
+def pack_remove(name: str) -> None:
+    from kb.packs import client
+
+    console.print(client.remove(name))
+
+
+@pack_app.command("build")
+def pack_build(names: list[str] = typer.Argument(None, help="packs to build (default: all defined)"),
+               out: Path = typer.Option(Path("dist/packs"), help="where the new files and manifest.json go"),
+               base: str = typer.Option(None, help="published state to diff against: release URL or folder "
+                                                   "(default: KB_PACKS_URL or the GitHub release)")) -> None:
+    """Build new pack versions (GitHub Actions runs this daily). Publish: upload `out` to the release."""
+    import json as _json
+
+    from kb.packs import build
+
+    report = build.build(names or build.available(), out, base)
+    console.print_json(_json.dumps(report, default=str))
+
+
 @app.command()
 def stats() -> None:
     """Size of the local base and the notebook."""

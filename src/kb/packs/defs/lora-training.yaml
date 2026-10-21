@@ -1,0 +1,39 @@
+title: LoRA training for image and video models
+description: >
+  Docs and example configs of the trainers (kohya sd-scripts and musubi-tuner, ai-toolkit, OneTrainer, SimpleTuner,
+  diffusers, diffusion-pipe, DiffSynth-Studio) with their release notes, their most discussed issues, LoRA cards
+  that describe training, and the training settings of popular published LoRAs on Hugging Face and Civitai.
+docs:
+  - repo: kohya-ss/sd-scripts
+    include: ["docs/*.md"]
+  - repo: kohya-ss/musubi-tuner
+    include: ["docs/*.md"]
+  - repo: ostris/ai-toolkit
+    include: ["config/examples/*.yaml", "config/examples/*.yml"]
+  - repo: Nerogar/OneTrainer
+    include: ["docs/*.md"]
+  - repo: bghira/SimpleTuner
+    include: ["documentation/*.md"]
+  - repo: huggingface/diffusers
+    include: ["docs/source/en/training/*.md", "examples/dreambooth/README*.md",
+              "examples/advanced_diffusion_training/README*.md", "examples/text_to_image/README*.md"]
+  - repo: tdrussell/diffusion-pipe
+    include: ["docs/*.md", "examples/*.toml"]
+  - repo: modelscope/DiffSynth-Studio
+    include: ["docs/en/*.md"]
+# translations: the English page is enough
+exclude: '(^|/)(ja|zh|ko|cn|zh-CN)/|[._-](ja|zh|ko|cn|es|hi|pt-BR|fr|de|ru|zh-CN)\.md$|README_(ja|zh|cn|ko)|-ja\.md$'
+max_files: 120
+issues:
+  repos: [kohya-ss/sd-scripts, kohya-ss/musubi-tuner, ostris/ai-toolkit, Nerogar/OneTrainer, bghira/SimpleTuner,
+          tdrussell/diffusion-pipe]
+  per_repo: 15
+recipes:
+  hf:
+    filters: [lora]
+    sorts: [downloads, trendingScore, likes]
+    limit: 400
+  civitai:
+    periods: [AllTime, Month]
+    pages: 3
+cards: 120

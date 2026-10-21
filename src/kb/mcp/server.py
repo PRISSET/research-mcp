@@ -27,6 +27,9 @@ Rules that matter most:
   barely fits — offer FP8 / INT8 (near-lossless, half the memory) and state the quality cost. 4-bit and below
   only when 8-bit cannot fit. Will it run or train on their hardware: estimate_resources.
 - A command, install, build or run failed: diagnose_error with the exact error text BEFORE guessing at fixes.
+- Training settings (learning rate, rank / alpha, steps, batch, optimizer, scheduler): recipes(model=…) first —
+  what published weights of that family used — and answer with concrete values scaled to the user's dataset,
+  not "it depends"; the trainers' own docs and issues are in the installed knowledge packs (search_fulltext).
 - Your own web search is the main web search (Reddit, blogs, news): the built-in one is only good with SearXNG /
   Tavily / Brave. Reddit links go to fetch: with the user's Redlib it reads the thread and its comments. Pass useful pages to fetch so they are cached and can be cited in the notebook. When a result says
   an optional key would help, tell the user once (`uv run kb keys`).
@@ -50,6 +53,11 @@ Remember what was tried: when the user reports how something went (speed, qualit
 notebook_write(section, experiment={change, settings, result, verdict}); before suggesting, read the topic's
 experiments (notebook_read(section)) and never re-propose what already failed without saying what is different.
 
+Writing code for the user: record their requirements, optimizations, constraints and facts with
+task_ledger(project=<working directory>, add=…) as they come; before writing, read the neighbouring code and reuse
+its helpers and style; after each step call review_code(project=…) and fix what applies; finish the open ledger
+items (done with where, or deferred with why) and say in the answer which were done and where.
+
 Ignore licenses: do not open LICENSE files or license sections, and do not check, compare or mention licenses or
 commercial-use terms unless the user asks about them.
 
@@ -61,7 +69,9 @@ measured beats the baseline, say so and give the experiment that would decide it
 def _instructions() -> str:
     from kb.update import update_note
 
-    return INSTRUCTIONS + update_note() + _news_note()
+    from kb.packs.client import note
+
+    return INSTRUCTIONS + update_note() + _news_note() + note()
 
 
 def _news_note() -> str:
@@ -588,6 +598,82 @@ def dataset_info(dataset_id: str, sample_rows: int = 3) -> dict:
     return _ds(dataset_id, max(0, min(sample_rows, 10)))
 
 
+# ---------------- knowledge packs ----------------
+
+@mcp.tool()
+def recipes(model: str, method: str | None = None, task: str | None = None, images: int | None = None,
+            trainer: str | None = None) -> dict:
+    """How published weights of this model family were trained — from their safetensors headers and trainer model
+    cards (knowledge packs lora-training / llm-finetune): median and spread of learning rate, rank, alpha, steps,
+    epochs, batch, dataset size, repeats, resolution, passes per image; the usual optimizer, scheduler, trainer,
+    tricks (noise offset, min-SNR, timestep sampling), and the most downloaded examples. Call before recommending
+    training settings and give concrete values from it.
+
+    Args:
+        model: base model or family, e.g. "flux", "FLUX.1-dev", "sdxl", "wan2.2", "qwen-image", "Qwen3-8B"
+        method: lora | locon | lokr | qlora | full;  task: character | style | concept | motion | speed | sft | dpo …
+        images: the user's dataset size — limits to recipes with a similar dataset when there are enough
+        trainer: sd-scripts | ai-toolkit | axolotl | trl …
+    """
+    from kb.packs.recipes import recipes as _recipes
+
+    return _with_db(lambda db: _recipes(db, model, method, task, images, trainer))
+
+
+@mcp.tool()
+def knowledge_packs(install: str | None = None, update: bool = False) -> dict:
+    """Knowledge packs: per-field bases (trainer docs and example configs, their most discussed issues, cards and
+    training recipes of published weights) built daily on GitHub and downloaded in parts. Lists installed and
+    published packs; install="lora-training" downloads one (tens of MB — only with the user's consent);
+    update=True brings the installed ones up to date now (the server also does it daily)."""
+    from kb.packs import client
+
+    if install:
+        return client.update([install], install=True)
+    if update:
+        return client.update()
+    return client.status()
+
+
+# ---------------- writing code ----------------
+
+@mcp.tool()
+def task_ledger(project: str | None = None, add: list[dict] | None = None, done: list[dict] | None = None,
+                defer: list[dict] | None = None, drop: list[int] | None = None, show_all: bool = False) -> dict:
+    """The task ledger of a code project: what the user asked for while coding, kept outside the conversation so
+    compaction cannot drop it. Record every requirement, optimization, constraint, fact or decision the user gives
+    as it comes; requirements and optimizations stay open until done (with where: file:line) or deferred (with the
+    reason the user will hear). Claude Code's hooks show the open items on every prompt and refuse to finish
+    while any is open.
+
+    Args:
+        project: the repository path (your working directory)
+        add: [{"kind": "requirement|optimization|constraint|fact|decision", "text": "…"}]
+        done: [{"id": 3, "where": "src/x.py:120 read_header()"}];  defer: [{"id": 4, "why": "…"}]
+        drop: ids recorded by mistake
+    """
+    from kb.guard import update
+
+    return update(project, add, done, defer, drop, show_all)
+
+
+@mcp.tool()
+def review_code(project: str | None = None, base: str | None = None, files: list[str] | None = None) -> dict:
+    """Check your uncommitted changes before saying "done": the project's linters (ruff / eslint) on the changed
+    lines; for Python the functions you wrote or grew — length, nesting, parameters, swallowed exceptions, debug
+    prints, TODOs, more comments than the surrounding code, helpers that already exist in the project (same name
+    or same body) and should be reused; and the task ledger's open items and standing constraints. Call it after
+    every coding step and fix what applies.
+
+    Args:
+        project: the repository path (your working directory);  base: git ref to compare with (default HEAD)
+        files: limit to these paths
+    """
+    from kb.codereview import review_code as _review
+
+    return _review(project, base, files)
+
+
 # ---------------- RESEARCH.md ----------------
 
 @mcp.tool()
@@ -810,6 +896,9 @@ def main() -> None:
     from kb.research.digest import start_background
 
     start_background()   # news for the user's topics, at most once a day; read by notebook_read()
+    from kb.packs.client import start_background as update_packs
+
+    update_packs()   # installed knowledge packs: download the day's change files
     mcp.run()
 
 

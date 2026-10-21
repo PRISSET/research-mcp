@@ -10,6 +10,10 @@
   paper's code: `source_info(code=true)`.
 - When a command, install, build or run fails, call `diagnose_error` with the exact error text (plus library and
   version) before trying fixes by guessing.
+- Before recommending training settings (learning rate, rank / alpha, steps, batch, optimizer): `recipes(model=…)`
+  — what published weights of that family were trained with — and give concrete values scaled to the user's
+  dataset, not "it depends". Trainer docs and issues come with the knowledge packs (`uv run kb pack install
+  lora-training` / `llm-finetune`), found by `search_fulltext`.
 - For research or planning requests, first call `research_brief` and ask the user what it reports missing (until it
   is ready); for "find a better way to …" use `find_methods` with several phrasings and the baseline to beat, and
   answer with the strongest options and their measured gains, not a long list. Use several platforms (papers,
@@ -28,3 +32,7 @@
   blogs); if a result says an optional key would help, tell the user once (`uv run kb keys`).
 - Ignore licenses: do not open LICENSE files or license sections, do not check, compare or mention licenses or
   commercial-use terms unless the user asks about them.
+- When writing code: record each requirement, optimization, constraint or fact the user gives with `task_ledger`
+  (project = your working directory) as it comes; read the neighbouring code first and reuse its helpers and
+  style; after each step call `review_code` and fix what applies; before finishing, mark every open ledger item
+  done (where) or deferred (why) and list them in the answer.

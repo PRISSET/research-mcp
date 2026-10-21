@@ -135,3 +135,50 @@ CREATE TABLE IF NOT EXISTS citation_contexts (
     PRIMARY KEY (paper_id, citing_s2_id, context)
 );
 CREATE INDEX IF NOT EXISTS idx_citctx_stance ON citation_contexts(paper_id, stance);
+
+-- ---------------- Knowledge packs (src/kb/packs) ----------------
+CREATE TABLE IF NOT EXISTS packs (
+    name        TEXT PRIMARY KEY,
+    version     INTEGER NOT NULL,
+    items       INTEGER NOT NULL DEFAULT 0,
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+-- Which pack a document or recipe came from, with its content hash: an update rewrites only changed records.
+CREATE TABLE IF NOT EXISTS pack_items (
+    pack        TEXT NOT NULL,
+    item_id     TEXT NOT NULL,
+    type        TEXT NOT NULL,            -- doc | recipe
+    hash        TEXT NOT NULL,
+    PRIMARY KEY (pack, item_id)
+);
+CREATE INDEX IF NOT EXISTS idx_pack_items_id ON pack_items(item_id);
+
+-- Training settings of published weights (safetensors metadata, trainer model cards).
+CREATE TABLE IF NOT EXISTS recipes (
+    id          TEXT PRIMARY KEY,         -- recipe:hf:<repo>/<file> | recipe:civitai:<version id>
+    url         TEXT,
+    title       TEXT,
+    author      TEXT,
+    base_model  TEXT,
+    family      TEXT,                     -- flux.1-dev | sdxl | wan2.2 | qwen3 | …
+    task        TEXT,                     -- character | style | concept | … (from tags and names)
+    trainer     TEXT,
+    method      TEXT,                     -- lora | locon | lokr | loha | full
+    rank        INTEGER,
+    alpha       REAL,
+    lr          REAL,
+    text_lr     REAL,
+    optimizer   TEXT,
+    scheduler   TEXT,
+    steps       INTEGER,
+    epochs      INTEGER,
+    batch       INTEGER,                  -- per step: per device x gradient accumulation
+    images      INTEGER,
+    repeats     REAL,
+    resolution  INTEGER,                  -- longest side
+    precision   TEXT,
+    extra       TEXT NOT NULL DEFAULT '{}',
+    popularity  INTEGER,                  -- downloads (rounded)
+    date        TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_recipes_family ON recipes(family);

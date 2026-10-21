@@ -1,0 +1,63 @@
+# Knowledge packs (src/kb/packs): built daily and published to the "packs" release. Each run publishes only what
+# changed since the previous version (a numbered change file) and a fresh snapshot now and then; users' servers
+# download the change files they lack. Optional secrets: HF_TOKEN (higher Hugging Face limits), CIVITAI_API_KEY
+# (headers of Civitai files that need a login).
+name: Knowledge packs
+
+on:
+  schedule:
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+    inputs:
+      packs:
+        description: "packs to build, space-separated (empty: all)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: packs
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_TOKEN: ${{ github.token }}
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      CIVITAI_API_KEY: ${{ secrets.CIVITAI_API_KEY }}
+      KB_DATA_DIR: ${{ github.workspace }}/.pack-data
+      RESEARCH_KEYS: /dev/null
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+      - run: uv sync --frozen
+      # weights headers already read (per repo revision / Civitai version): not downloaded again
+      - uses: actions/cache@v6
+        with:
+          path: .pack-data/pack-build
+          key: pack-build-${{ github.run_id }}
+          restore-keys: pack-build-
+      - name: Release
+        run: |
+          gh release view packs >/dev/null 2>&1 || gh release create packs --latest=false \
+            --title "Knowledge packs" \
+            --notes "Built daily by .github/workflows/packs.yml. Install: uv run kb pack install <name>."
+      - name: Build
+        run: >
+          uv run kb pack build ${{ inputs.packs }} --out dist
+          --base "https://github.com/${{ github.repository }}/releases/download/packs"
+      - name: Publish
+        run: |
+          shopt -s nullglob
+          files=(dist/*.jsonl.xz)
+          # data files first, the manifest that points at them last, then what nothing points at any more
+          if [ ${#files[@]} -gt 0 ]; then gh release upload packs "${files[@]}" --clobber; fi
+          gh release upload packs dist/manifest.json --clobber
+          while read -r f; do
+            if [ -n "$f" ]; then gh release delete-asset packs "$f" -y || true; fi
+          done < dist/obsolete.txt

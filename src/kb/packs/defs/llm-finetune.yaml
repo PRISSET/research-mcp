@@ -1,0 +1,32 @@
+title: Fine-tuning LLMs (SFT, LoRA / QLoRA, DPO, GRPO)
+description: >
+  Docs and example configs of TRL, PEFT, Axolotl, LlamaFactory, torchtune, ms-swift and Unsloth with their release
+  notes and most discussed issues, and the hyperparameters of popular fine-tunes on Hugging Face (Trainer and
+  Axolotl model cards, adapter configs).
+docs:
+  - repo: huggingface/trl
+    include: ["docs/source/*.md"]
+  - repo: huggingface/peft
+    include: ["docs/source/*.md"]
+  - repo: axolotl-ai-cloud/axolotl
+    include: ["docs/*.qmd", "examples/qwen3*/*.yaml", "examples/llama-3/*.yaml", "examples/mistral/*.yaml"]
+  - repo: hiyouga/LlamaFactory
+    include: ["docs/en/*.md", "examples/train_lora/*.yaml", "examples/train_qlora/*.yaml", "examples/train_full/*.yaml"]
+  - repo: meta-pytorch/torchtune
+    include: ["recipes/configs/qwen*/*.yaml", "recipes/configs/llama3_*/*.yaml"]
+  - repo: modelscope/ms-swift
+    include: ["docs/source_en/*.md"]
+  - repo: unslothai/unsloth
+    include: []
+exclude: '(^|/)(ja|zh|ko|cn)/|[._-](ja|zh|ko|cn)\.md$|README_(ja|zh|cn|ko)'
+max_files: 120
+issues:
+  repos: [huggingface/trl, huggingface/peft, axolotl-ai-cloud/axolotl, hiyouga/LlamaFactory, unslothai/unsloth]
+  per_repo: 15
+recipes:
+  llm: true
+  hf:
+    filters: [generated_from_trainer, axolotl, trl, peft]
+    sorts: [downloads, trendingScore]
+    limit: 200
+cards: 0

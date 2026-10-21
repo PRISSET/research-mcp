@@ -40,6 +40,7 @@ def prune(db: Database, days: int = KEEP_DAYS, keep: set[str] | None = None, vac
         from kb import notebook
 
         keep = notebook.cited_ids()
+    keep = keep | {r[0] for r in db.conn.execute("SELECT item_id FROM pack_items")}   # knowledge packs stay
     cutoff = f"-{int(days)} days"
     stale_text = [i for i in _ids(db.conn.execute(
         "SELECT paper_id FROM paper_fulltext WHERE COALESCE(used_at, fetched_at) < datetime('now', ?)", (cutoff,)))

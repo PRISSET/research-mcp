@@ -3,7 +3,7 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/PRISSET/research-mcp/main/scripts/install.sh | bash -s -- --agent claude
 #   scripts/install.sh [--agent claude|codex|opencode|all] [--dir PATH] [--notebook FILE] [--lang ru|en] [--embed|--no-embed]
-#                      [--agent-rules] [--no-register] [--searxng] [--redlib]
+#                      [--agent-rules] [--no-register] [--searxng] [--redlib] [--pack NAME]… [--code-guard]
 #
 #   --agent NAME     which agent to register in (and write rules for): claude, codex, opencode or all. Default: the agent
 #                    running this script (Claude Code sets CLAUDECODE, Codex CODEX_THREAD_ID / CODEX_SANDBOX*);
@@ -16,6 +16,10 @@
 # The server runs on the CPU (registered with CUDA_VISIBLE_DEVICES=""): the GPU stays free for your own work.
 #   --searxng        install a local SearXNG (no Docker) for free, keyless web search, as a systemd user service
 #   --redlib         build a local Redlib (needs Rust's cargo) so Reddit threads and search can be read
+#   --code-guard     Claude Code hooks: the task ledger (what you asked for while coding) is shown on every prompt,
+#                    and the agent cannot finish while items are open or its changes are unreviewed
+#   --pack NAME      install a knowledge pack (repeatable): lora-training (image / video LoRAs), llm-finetune;
+#                    trainer docs, issues and the settings of published weights, updated daily in parts
 #   --agent-rules    add a short rules block to the agent's global instructions (~/.claude/CLAUDE.md for Claude Code,
 #                    ~/.codex/AGENTS.md for Codex, ~/.config/opencode/AGENTS.md for OpenCode) so it looks models / versions / errors up with this MCP in every
 #                    project (marked block; remove: --remove-agent-rules)
@@ -25,7 +29,7 @@ set -euo pipefail
 
 REPO_URL="https://github.com/PRISSET/research-mcp.git"
 NAME="research"
-SEARXNG=0 REDLIB=0 DIR="" NOTEBOOK="$HOME/research/RESEARCH.md" LANG_NB="ru" EMBED=1 REGISTER=1 RULES=keep AGENT=""
+SEARXNG=0 REDLIB=0 GUARD=0 PACKS=() DIR="" NOTEBOOK="$HOME/research/RESEARCH.md" LANG_NB="ru" EMBED=1 REGISTER=1 RULES=keep AGENT=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -39,8 +43,10 @@ while [ $# -gt 0 ]; do
     --agent-rules) RULES=install ;;
     --searxng) SEARXNG=1 ;;
     --redlib) REDLIB=1 ;;
+    --pack) PACKS+=("$2"); shift ;;
+    --code-guard) GUARD=1 ;;
     --remove-agent-rules) RULES=remove ;;
-    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,27p' "$0"; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
   shift
@@ -172,6 +178,16 @@ if [ "$REDLIB" = 1 ]; then
   (cd "$DIR" && uv run kb redlib install) || warn "Redlib install failed: Reddit is searched with the agent's own web search"
 fi
 
+if [ "$GUARD" = 1 ]; then
+  say "Adding the code-guard hooks to Claude Code"
+  (cd "$DIR" && uv run kb guard install) || warn "code-guard hooks not added"
+fi
+
+if [ ${#PACKS[@]} -gt 0 ]; then
+  say "Installing knowledge packs: ${PACKS[*]}"
+  (cd "$DIR" && uv run kb pack install "${PACKS[@]}") || warn "pack install failed: retry with uv run kb pack install ${PACKS[*]}"
+fi
+
 say "Done"
 echo "Installed in: $DIR"
 echo "Notebook:     $NOTEBOOK (created on the first research)"
@@ -183,6 +199,7 @@ else
   echo "Not registered anywhere. Add manually: <agent> mcp add $NAME -- uv --directory \"$DIR\" run research-mcp"
 fi
 [ "$REDLIB" = 1 ] || echo "Read Reddit threads: re-run with --redlib (or: cd \"$DIR\" && uv run kb redlib install)"
+[ ${#PACKS[@]} -gt 0 ] || echo "Knowledge packs for training: uv run kb pack list / uv run kb pack install lora-training"
 [ "$SEARXNG" = 1 ] || echo "Free keyless web search: re-run with --searxng (or: cd \"$DIR\" && uv run kb searxng install)"
 echo "Optional free keys make search better (GitHub, Hugging Face, Semantic Scholar, Civitai, Tavily):"
 echo "  cd \"$DIR\" && uv run kb keys            # what each key improves and where to get it"
