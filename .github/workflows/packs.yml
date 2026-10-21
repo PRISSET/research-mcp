@@ -34,7 +34,7 @@ jobs:
       RESEARCH_KEYS: /dev/null
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.3.0   # no moving major tag
       - run: uv sync --frozen
       # weights headers already read (per repo revision / Civitai version): not downloaded again
       - uses: actions/cache@v6
