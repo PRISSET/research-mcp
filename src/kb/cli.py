@@ -256,6 +256,8 @@ def pack_build(names: list[str] = typer.Argument(None, help="packs to build (def
 
     report = build.build(names or build.available(), out, base)
     console.print_json(_json.dumps(report, default=str))
+    if any(r.get("error") for r in report.values()):
+        raise typer.Exit(1)   # red in GitHub Actions instead of a "successful" empty pack
 
 
 @app.command()

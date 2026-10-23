@@ -110,12 +110,13 @@ def _json(v: Any) -> Any:
         return None
 
 
-def _round2(n: Any) -> int | None:
-    """Two significant digits: download counts change every day, a recipe should not."""
+def _bucket(n: Any) -> int | None:
+    """Counts rounded down to 1, 2 or 5 x 10^k: downloads and likes change every day, a published record should
+    change only when its popularity really moves (about doubling)."""
     if not isinstance(n, (int, float)) or n <= 0:
         return 0 if n == 0 else None
-    p = 10 ** max(int(math.log10(n)) - 1, 0)
-    return int(round(n / p) * p)
+    p = 10 ** int(math.log10(n))
+    return next(m * p for m in (5, 2, 1) if n >= m * p)
 
 
 def _clean(d: dict[str, Any]) -> dict[str, Any]:
@@ -402,9 +403,9 @@ def hf_recipe(http: Any, m: dict[str, Any], llm: bool, cache: dict[str, Any]) ->
     rec = {"type": "recipe", "id": f"recipe:hf:{rid.lower()}", "rev": m.get("sha"), **parsed,
            "url": f"{HF}/{rid}", "title": rid, "author": m.get("author") or rid.split("/")[0], "base_model": base,
            "family": family(base) or family(extra.get("base_hint")),
-           "task": task_of(tags, rid, llm), "popularity": _round2(m.get("downloads") or 0),
+           "task": task_of(tags, rid, llm), "popularity": _bucket(m.get("downloads") or 0),
            "date": parsed.get("date") or (m.get("createdAt") or "")[:10] or None,
-           "extra": {**extra, **({"file": hit["file"]} if hit.get("file") else {}), "likes": _round2(m.get("likes"))}}
+           "extra": {**extra, **({"file": hit["file"]} if hit.get("file") else {}), "likes": _bucket(m.get("likes"))}}
     return _clean(rec)
 
 
@@ -445,9 +446,9 @@ def civitai_recipe(http: Any, m: dict[str, Any], cache: dict[str, Any]) -> dict[
            "url": f"https://civitai.com/models/{m['id']}?modelVersionId={v['id']}", "title": m.get("name"),
            "author": (m.get("creator") or {}).get("username"), "base_model": v.get("baseModel"),
            "family": family(v.get("baseModel")), "task": task_of(m.get("tags") or [], m.get("name") or ""),
-           "popularity": _round2(stats.get("downloadCount") or 0),
+           "popularity": _bucket(stats.get("downloadCount") or 0),
            "date": parsed.get("date") or (v.get("publishedAt") or "")[:10] or None,
-           "extra": {**extra, "likes": _round2(stats.get("thumbsUpCount"))}}
+           "extra": {**extra, "likes": _bucket(stats.get("thumbsUpCount"))}}
     return _clean(rec)
 
 

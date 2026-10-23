@@ -223,3 +223,17 @@ def test_new_downloads_are_budgeted_and_rate_limits_keep_old_records():
     # m0 from cache, m1/m2 are the budget (m1 rate-limited keeps its old record), m3-m5 wait; m4 keeps its old one
     assert sorted(out) == ["r:m0", "r:m1", "r:m2", "r:m4"] and out["r:m1"]["old"] and out["r:m4"]["old"]
     assert [m["id"] for m in got] == ["m0", "m2"]
+
+
+def test_counts_change_only_when_popularity_really_moves():
+    assert [rcp._bucket(n) for n in (0, 1, 3, 92, 93, 199, 200, 499, 86400)] == [0, 1, 2, 50, 50, 100, 200, 200, 50000]
+
+
+def test_build_with_most_sources_failing_publishes_nothing(local, monkeypatch):
+    pub, _, _ = local
+    spec = {"name": "t", "docs": [{"repo": "a/b"}, {"repo": "c/d"}], "recipes": {"hf": {"filters": ["lora"]}}}
+    monkeypatch.setattr(build, "load_def", lambda name: spec)
+    monkeypatch.setattr(build, "collect", lambda s, prev: ({}, {"docs:a/b", "docs:c/d"}))
+    rep = build.build(["t"], pub, str(pub))["t"]
+    assert "2 of 3 sources failed" in rep["error"]
+    assert "t" not in fmt.load_manifest(str(pub))["packs"]

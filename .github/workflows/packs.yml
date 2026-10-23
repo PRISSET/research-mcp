@@ -35,7 +35,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.3.0   # no moving major tag
-      - run: uv sync --frozen
+      - run: uv sync --frozen --extra fulltext   # passages are stored the way fetch() stores them
       # weights headers already read (per repo revision / Civitai version): not downloaded again
       - uses: actions/cache@v6
         with:

@@ -63,7 +63,7 @@ def export_doc(db: Database, doc_id: str, src: str, rev: str | None) -> dict[str
         "SELECT section, kind, text FROM chunks WHERE paper_id = ? ORDER BY ord", (doc_id,))]
     if not chunks:
         return None
-    extra = {k: (rcp._round2(v) if k in ROUNDED else v) for k, v in json.loads(p["extra"] or "{}").items()
+    extra = {k: (rcp._bucket(v) if k in ROUNDED else v) for k, v in json.loads(p["extra"] or "{}").items()
              if k not in VOLATILE}
     g = db.conn.execute("SELECT kind, grade, reasons, flags FROM critique WHERE source_id = ?", (doc_id,)).fetchone()
     rec = {"type": "doc", "id": doc_id, "src": src, "rev": rev,
@@ -356,6 +356,14 @@ def publish(name: str, spec: dict[str, Any], records: dict[str, dict[str, Any]],
     return new, sorted(files(entry) - files(new))
 
 
+def source_names(spec: dict[str, Any]) -> list[str]:
+    """The sources a pack collects from, named as in `failed`."""
+    conf = spec.get("recipes") or {}
+    return ([f"docs:{d['repo']}" for d in spec.get("docs") or []]
+            + [f"issues:{r}" for r in (spec.get("issues") or {}).get("repos") or []]
+            + [f"recipes:{k}" for k in ("hf", "civitai") if conf.get(k)])
+
+
 def build(names: list[str], out_dir: Path, base: str | None = None) -> dict[str, Any]:
     """Build the packs into out_dir against the published state at `base` (the release, or a local folder).
     Writes manifest.json there and obsolete.txt with the published files that can be deleted."""
@@ -368,6 +376,11 @@ def build(names: list[str], out_dir: Path, base: str | None = None) -> dict[str,
         entry = manifest["packs"].get(name)
         prev = fmt.replay(base, entry)
         records, failed = collect(spec, prev)
+        total = len(source_names(spec))
+        if total and 2 * len(failed) >= total:   # an environment problem (missing module, no network, token)
+            report[name] = {"error": f"{len(failed)} of {total} sources failed: nothing published",
+                            "failed_sources": sorted(failed)}
+            continue
         new, gone = publish(name, spec, records, entry, prev, out_dir)
         if new:
             manifest["packs"][name] = new
