@@ -137,5 +137,8 @@ def chat(messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None = No
     except httpx.HTTPError as e:
         raise Unavailable(f"DeepSeek proxy: {type(e).__name__}: {e}") from e
     if r.status_code != 200:
-        raise Unavailable(f"DeepSeek proxy HTTP {r.status_code}: {r.text[:300]}")
+        hint = ("; the token is wrong: take userToken from DevTools → Application → Local Storage → "
+                "https://chat.deepseek.com (not a cookie), then `uv run kb keys set DEEPSEEK_CHAT_TOKEN …`"
+                if "invalid token" in r.text else "")
+        raise Unavailable(f"DeepSeek proxy HTTP {r.status_code}: {r.text[:300]}{hint}")
     return r.json()["choices"][0]["message"]
