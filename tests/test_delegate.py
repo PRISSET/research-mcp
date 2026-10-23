@@ -124,3 +124,47 @@ def test_proxy_never_holds_the_token(monkeypatch):
     monkeypatch.setenv("DEEPSEEK_CHAT_TOKEN", "secret")
     env = deepseek._proxy_env()
     assert "DEEPSEEK_CHAT_TOKEN" not in env and env["PROXY_PORT"] == str(deepseek.PORT)
+
+
+def test_parallel_chats_wait_for_each_other(monkeypatch, tmp_path):
+    import time
+    from http.server import ThreadingHTTPServer
+
+    state = {"now": 0, "peak": 0}
+    lock = threading.Lock()
+
+    class SlowProxy(BaseHTTPRequestHandler):
+        def do_POST(self):
+            self.rfile.read(int(self.headers["Content-Length"]))
+            with lock:
+                state["now"] += 1
+                state["peak"] = max(state["peak"], state["now"])
+            time.sleep(0.3)
+            with lock:
+                state["now"] -= 1
+            body = json.dumps({"choices": [{"message": {"role": "assistant", "content": "ok"}}]}).encode()
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):
+            pass
+
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), SlowProxy)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    monkeypatch.setenv("DEEPSEEK_PROXY_URL", f"http://127.0.0.1:{srv.server_port}")
+    monkeypatch.setenv("DEEPSEEK_CHAT_TOKEN", "tok")
+    monkeypatch.setenv("KB_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(deepseek, "ensure_running", lambda: None)
+    answers = []
+    workers = [threading.Thread(target=lambda: answers.append(deepseek.chat([{"role": "user", "content": "q"}])))
+               for _ in range(3)]
+    try:
+        for w in workers:
+            w.start()
+        for w in workers:
+            w.join()
+    finally:
+        srv.shutdown()
+    assert len(answers) == 3 and state["peak"] == 1      # the next request went only after the previous finished

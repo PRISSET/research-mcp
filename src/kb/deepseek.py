@@ -13,12 +13,14 @@ Several accounts: tokens joined with "|" are rotated by the proxy and a throttle
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import shutil
 import subprocess
 import sys
 import time
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +30,7 @@ PROXY = Path(__file__).resolve().parents[2] / "deepseek_proxy"
 PORT = int(os.environ.get("KB_DEEPSEEK_PORT", "3085"))
 UNIT = Path("~/.config/systemd/user/research-deepseek.service").expanduser()
 MODEL = "deepseek-chat"
+QUEUE_WAIT = 900.0   # how long a request waits for the one in flight (a completion times out at 240 s)
 
 
 class Unavailable(Exception):
@@ -123,17 +126,44 @@ def ensure_running(wait: float = 8.0) -> None:
     raise Unavailable(f"the DeepSeek proxy did not start on {url()}")
 
 
+@contextlib.contextmanager
+def _one_at_a_time(wait: float = QUEUE_WAIT) -> Iterator[None]:
+    """The proxy reuses one web chat session per token, and parallel completions in it fail: every caller
+    (threads, other research-mcp processes) waits until the running completion has finished, then goes."""
+    try:
+        import fcntl
+    except ImportError:  # Windows: no flock, just go ahead
+        yield
+        return
+    from kb.config import settings
+
+    data = Path(os.environ.get("KB_DATA_DIR") or settings.data_dir)
+    data.mkdir(parents=True, exist_ok=True)
+    with open(data / "deepseek.lock", "w") as fh:
+        deadline = time.monotonic() + wait
+        while True:
+            try:
+                fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except OSError:
+                if time.monotonic() > deadline:
+                    raise Unavailable(f"another DeepSeek request has been running for over {wait:.0f} s") from None
+                time.sleep(0.5)
+        yield
+
+
 def chat(messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None = None,
          timeout: float = 240.0) -> dict[str, Any]:
-    """One completion; returns the assistant message (content, tool_calls)."""
+    """One completion; returns the assistant message (content, tool_calls). Completions run one at a time."""
     ensure_running()
     # client_prompt: keep our system message, leave out the proxy's DeepSeek Harness workflow
     body: dict[str, Any] = {"model": MODEL, "messages": messages, "stream": False, "client_prompt": True}
     if tools:
         body["tools"] = tools
     try:
-        r = httpx.post(url() + "/v1/chat/completions", json=body, timeout=timeout,
-                       headers={"Authorization": f"Bearer {token()}"})
+        with _one_at_a_time():
+            r = httpx.post(url() + "/v1/chat/completions", json=body, timeout=timeout,
+                           headers={"Authorization": f"Bearer {token()}"})
     except httpx.HTTPError as e:
         raise Unavailable(f"DeepSeek proxy: {type(e).__name__}: {e}") from e
     if r.status_code != 200:
