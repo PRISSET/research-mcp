@@ -9,3 +9,7 @@ data/
 PLAN.md
 docs/
 .codegraph/
+deepseek_proxy/node_modules/
+deepseek_proxy/dist/
+deepseek_proxy/dsh-provider-config.json
+deepseek_proxy/verify-tokens.js

@@ -58,7 +58,7 @@ def test_research_flow_over_stdio(tmp_path):
     env = {**os.environ, "KB_DATA_DIR": str(data), "RESEARCH_NOTEBOOK": str(notebook)}
     out = anyio.run(_run, env)
     assert {"research_sweep", "fetch", "diagnose_error", "check_versions", "notebook_add_source"} <= set(out["tools"])
-    assert len(out["tools"]) == 25
+    assert len(out["tools"]) == 26 and "delegate" in out["tools"]
     assert "diagnose_error" in out["fix"] and "ValueError: boom" in out["fix"]
     assert "квантование LLM" in out["prompt"] and "notebook_write(title=" in out["prompt"]
     assert out["added"]["status"] == "added"

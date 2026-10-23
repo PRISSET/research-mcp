@@ -3,7 +3,7 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/PRISSET/research-mcp/main/scripts/install.sh | bash -s -- --agent claude
 #   scripts/install.sh [--agent claude|codex|opencode|all] [--dir PATH] [--notebook FILE] [--lang ru|en] [--embed|--no-embed]
-#                      [--agent-rules] [--no-register] [--searxng] [--redlib] [--pack NAME]… [--code-guard]
+#                      [--agent-rules] [--no-register] [--searxng] [--redlib] [--pack NAME]… [--code-guard] [--deepseek]
 #
 #   --agent NAME     which agent to register in (and write rules for): claude, codex, opencode or all. Default: the agent
 #                    running this script (Claude Code sets CLAUDECODE, Codex CODEX_THREAD_ID / CODEX_SANDBOX*);
@@ -16,6 +16,8 @@
 # The server runs on the CPU (registered with CUDA_VISIBLE_DEVICES=""): the GPU stays free for your own work.
 #   --searxng        install a local SearXNG (no Docker) for free, keyless web search, as a systemd user service
 #   --redlib         build a local Redlib (needs Rust's cargo) so Reddit threads and search can be read
+#   --deepseek       build the DeepSeek web proxy (needs Node.js): delegate hands reading-heavy jobs to a free
+#                    DeepSeek subagent; then: uv run kb keys set DEEPSEEK_CHAT_TOKEN <token>
 #   --code-guard     Claude Code hooks: the task ledger (what you asked for while coding) is shown on every prompt,
 #                    and the agent cannot finish while items are open or its changes are unreviewed
 #   --pack NAME      install a knowledge pack (repeatable): lora-training (image / video LoRAs), llm-finetune;
@@ -29,7 +31,7 @@ set -euo pipefail
 
 REPO_URL="https://github.com/PRISSET/research-mcp.git"
 NAME="research"
-SEARXNG=0 REDLIB=0 GUARD=0 PACKS=() DIR="" NOTEBOOK="$HOME/research/RESEARCH.md" LANG_NB="ru" EMBED=1 REGISTER=1 RULES=keep AGENT=""
+SEARXNG=0 REDLIB=0 GUARD=0 DEEPSEEK=0 PACKS=() DIR="" NOTEBOOK="$HOME/research/RESEARCH.md" LANG_NB="ru" EMBED=1 REGISTER=1 RULES=keep AGENT=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -45,8 +47,9 @@ while [ $# -gt 0 ]; do
     --redlib) REDLIB=1 ;;
     --pack) PACKS+=("$2"); shift ;;
     --code-guard) GUARD=1 ;;
+    --deepseek) DEEPSEEK=1 ;;
     --remove-agent-rules) RULES=remove ;;
-    -h|--help) sed -n '2,27p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,29p' "$0"; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
   shift
@@ -181,6 +184,11 @@ fi
 if [ "$GUARD" = 1 ]; then
   say "Adding the code-guard hooks to Claude Code"
   (cd "$DIR" && uv run kb guard install) || warn "code-guard hooks not added"
+fi
+
+if [ "$DEEPSEEK" = 1 ]; then
+  say "Building the DeepSeek web proxy (delegate subagent)"
+  (cd "$DIR" && uv run kb deepseek install) || warn "DeepSeek proxy not built: delegate stays off (needs Node.js 18+)"
 fi
 
 if [ ${#PACKS[@]} -gt 0 ]; then

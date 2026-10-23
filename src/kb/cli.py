@@ -155,6 +155,42 @@ def redlib_uninstall() -> None:
     console.print("Redlib removed, REDLIB_URL cleared")
 
 
+deepseek_app = typer.Typer(help="DeepSeek subagent for delegate: the bundled web proxy (free, your chat.deepseek.com "
+                                "login)", no_args_is_help=True)
+app.add_typer(deepseek_app, name="deepseek")
+
+
+@deepseek_app.command("install")
+def deepseek_install() -> None:
+    """Build the proxy in deepseek_proxy/ (npm) and run it as a service; the token goes to `kb keys`."""
+    from kb import deepseek
+
+    how = deepseek.install()
+    console.print(f"[green]DeepSeek proxy ready[/] at {deepseek.url()} — {how}.")
+    if not deepseek.token():
+        console.print("Now: uv run kb keys set DEEPSEEK_CHAT_TOKEN <token> (chat.deepseek.com → DevTools → "
+                      "Application → Local Storage → userToken)")
+
+
+@deepseek_app.command("uninstall")
+def deepseek_uninstall() -> None:
+    from kb import deepseek
+
+    deepseek.uninstall()
+    console.print("DeepSeek proxy service removed")
+
+
+@deepseek_app.command("ask")
+def deepseek_ask(task: str, project: str = typer.Option(None, help="repository the subagent may read"),
+                 max_steps: int = 12) -> None:
+    """Run the subagent from the terminal: what delegate returns to the agent."""
+    import json
+
+    from kb.delegate import delegate
+
+    console.print_json(json.dumps(delegate(task, project=project, max_steps=max_steps), ensure_ascii=False))
+
+
 guard_app = typer.Typer(help="Code guard: task ledger + Claude Code hooks (open items on every prompt, no "
                              "finishing while items are open or code is unreviewed)", no_args_is_help=True)
 app.add_typer(guard_app, name="guard")

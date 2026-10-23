@@ -1,0 +1,24 @@
+{
+  "name": "deepseek-chat-web-proxy",
+  "version": "2.0.0",
+  "description": "TypeScript reverse-engineered DeepSeek Web Bridge & Proxy for Harness",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "dev": "ts-node src/server.ts",
+    "apply-config": "ts-node src/cli/apply-config.ts"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^20.11.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
