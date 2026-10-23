@@ -168,3 +168,28 @@ def test_parallel_chats_wait_for_each_other(monkeypatch, tmp_path):
     finally:
         srv.shutdown()
     assert len(answers) == 3 and state["peak"] == 1      # the next request went only after the previous finished
+
+
+ECHO = ('Before writing the target tool call, let me write a simple echo command to check if the harness still '
+        'works and performs tool calls.\n\n```json\n{\n  "name": "bash",\n  "arguments": {"command": "echo check"}\n}\n```')
+
+
+def test_lost_tool_call_is_retried_not_returned_as_the_answer(monkeypatch, project):
+    sent = _scripted(monkeypatch, [{"content": ECHO}, {"content": "", "tool_calls": [_call("grep", pattern="LR")]},
+                                   {"content": "LR = 1e-4 (train.py:1)"}])
+    out = delegate.delegate("q", project=str(project))
+    assert out["answer"] == "LR = 1e-4 (train.py:1)"
+    nudge = sent[1]["messages"][-1]["content"]
+    assert "did not arrive" in nudge and "grep" in nudge and "fetch" in nudge
+
+
+def test_endless_lost_calls_end_in_an_error(monkeypatch, project):
+    _scripted(monkeypatch, [{"content": ECHO}] * 5)
+    out = delegate.delegate("q", project=str(project))
+    assert "format" in out["error"] and "answer" not in out
+
+
+def test_markdown_images_do_not_reach_the_proxy(project):
+    (project / "README.md").write_text("# X\n![overview](assets/overview.png) text\n")
+    out = delegate.run_tool("read_file", {"path": "README.md"}, project)
+    assert "[image: overview]" in out and "assets/overview.png" not in out

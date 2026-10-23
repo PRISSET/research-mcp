@@ -125,7 +125,7 @@ export async function handleChatCompletions(req: IncomingMessage, res: ServerRes
   }
   const tools = parsed.tools || parsed.functions || [];
 
-  const imageSources = extractImagesFromMessages(messages);
+  const imageSources = extractImagesFromMessages(messages, parsed.client_prompt !== true);
 
   const refFileIds: string[] = [];
   if (imageSources.length > 0) {

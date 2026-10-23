@@ -102,16 +102,16 @@ function collectImagesFromText(content: string, images: ImageSource[]): void {
  * Recursively collect image sources from any content shape used by the
  * OpenAI chat-completions, OpenAI Responses, and Anthropic Messages APIs.
  */
-function collectImageParts(content: unknown, images: ImageSource[]): void {
+function collectImageParts(content: unknown, images: ImageSource[], fromText: boolean = true): void {
   if (!content) return;
 
   if (Array.isArray(content)) {
-    for (const part of content) collectImageParts(part, images);
+    for (const part of content) collectImageParts(part, images, fromText);
     return;
   }
 
   if (typeof content === 'string') {
-    collectImagesFromText(content, images);
+    if (fromText) collectImagesFromText(content, images);
     return;
   }
 
@@ -156,8 +156,8 @@ function collectImageParts(content: unknown, images: ImageSource[]): void {
     }
     default: {
       // Descend into tool results / nested content blocks.
-      if (part.content !== undefined) collectImageParts(part.content, images);
-      if (part.output !== undefined) collectImageParts(part.output, images);
+      if (part.content !== undefined) collectImageParts(part.content, images, fromText);
+      if (part.output !== undefined) collectImageParts(part.output, images, fromText);
       return;
     }
   }
@@ -181,13 +181,17 @@ function dedupeSources(sources: ImageSource[]): ImageSource[] {
  * `input_file`) and Anthropic-style (`image.source`) payloads, and also picks
  * up markdown/URL/local-path references embedded in plain text.
  */
-export function extractImagesFromMessages(messages: OpenAIMessage[]): ImageSource[] {
+/**
+ * `fromText: false` takes only structured image parts. An agent's messages carry tool results (READMEs, web
+ * pages, file listings) whose markdown images, image URLs and local paths are not meant for the model.
+ */
+export function extractImagesFromMessages(messages: OpenAIMessage[], fromText: boolean = true): ImageSource[] {
   const images: ImageSource[] = [];
   if (!Array.isArray(messages)) return images;
 
   for (const msg of messages) {
     if (!msg) continue;
-    collectImageParts(msg.content, images);
+    collectImageParts(msg.content, images, fromText);
   }
   return dedupeSources(images);
 }

@@ -26,6 +26,16 @@ URL = re.compile(r"https?://[^\s)\]>'\"`]+")
 # source ids as this server's tools return them (web:…, gh:…, arxiv:…): citable like URLs
 SOURCE_ID = re.compile(r"\b(?:web|gh|hf|arxiv|civitai|doi|hn|issues|openalex|pack|reddit|s2|yt):[^\s)\]>'\"`,;]+")
 
+# DeepSeek's web chat sometimes starts a call in its native tool format, which never reaches us: the proxy cuts it
+# and puts a placeholder `bash` echo call in its place (meant for DeepSeek Harness, which has bash). Any reply that
+# is only a call to a tool we do not have is such a lost call, not an answer.
+LOST_CALL = re.compile(r'```(?:json)?\s*\{\s*"name"\s*:\s*"([^"]+)"')
+RETRY = ("Your tool call did not arrive (the chat's own tool-call format does not reach the harness, and there is no "
+         "bash or shell tool). Call one of the listed tools, written ONLY as a ```json block: "
+         '{{"name": "<tool>", "arguments": {{...}}}}. Available: {names}.')
+MAX_RETRIES = 3
+IMAGE = re.compile(r"!\[([^\]]*)\]\([^)]*\)")
+
 SYSTEM = """\
 You are a research subagent working for another AI agent (Claude Code) that has a small context budget. Do the
 reading for it: search, open the promising sources (fetch pages, issues, papers, docs; read_file / grep the
@@ -113,6 +123,7 @@ def run_tool(name: str, args: dict[str, Any], project: Path | None) -> str:
     except Exception as e:
         return f"error: {type(e).__name__}: {str(e)[:300]}"
     text = out if isinstance(out, str) else json.dumps(out, ensure_ascii=False, default=str)
+    text = IMAGE.sub(lambda m: f"[image: {m.group(1)}]", text)   # README badges and pictures are noise here
     return text if len(text) <= RESULT_CHARS else text[:RESULT_CHARS] + f"\n… cut ({len(text)} chars)"
 
 
@@ -168,7 +179,8 @@ def delegate(task: str, context: str | None = None, project: str | None = None, 
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": SYSTEM.format(today=datetime.date.today().isoformat(), words=words)},
         {"role": "user", "content": prompt}]
-    seen, calls, read_chars = "", [], 0
+    names = sorted(t["function"]["name"] for t in tools)
+    seen, calls, read_chars, retries = "", [], 0, 0
     max_steps = max(1, min(max_steps, 30))
     for step in range(1, max_steps + 1):
         _fit(messages)
@@ -179,9 +191,19 @@ def delegate(task: str, context: str | None = None, project: str | None = None, 
                 None if last else tools)
         except deepseek.Unavailable as e:
             return {"error": str(e), "tool_calls": calls, "next": "do the task yourself with this server's tools"}
-        tool_calls = msg.get("tool_calls") or []
+        tool_calls, content = msg.get("tool_calls") or [], msg.get("content") or ""
+        lost = LOST_CALL.search(content)
+        if not tool_calls and lost and lost.group(1) not in names:
+            if last or retries >= MAX_RETRIES:
+                return {"error": "the DeepSeek subagent kept answering with tool calls in a format the proxy cannot "
+                        "pass on", "tool_calls": calls, "next": "do the task yourself with this server's tools"}
+            retries += 1
+            messages += [{"role": "assistant", "content": content},
+                         {"role": "user", "content": RETRY.format(names=", ".join(names))}]
+            continue
         if not tool_calls:
-            return _report(msg.get("content") or "", seen, calls, read_chars, step)
+            return _report(content, seen, calls, read_chars, step)
+        retries = 0
         messages.append({"role": "assistant", "content": msg.get("content") or "", "tool_calls": tool_calls})
         for call in tool_calls:
             name, args = call.get("function", {}).get("name", ""), _args(call)
