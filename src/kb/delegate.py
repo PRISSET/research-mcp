@@ -23,6 +23,8 @@ RESULT_CHARS = 9000        # one tool result as the subagent sees it
 CONTEXT_CHARS = 110_000    # the whole conversation; older results shrink first (the web chat has ~64k tokens)
 OLD_RESULT_CHARS = 700
 URL = re.compile(r"https?://[^\s)\]>'\"`]+")
+# source ids as this server's tools return them (web:…, gh:…, arxiv:…): citable like URLs
+SOURCE_ID = re.compile(r"\b(?:web|gh|hf|arxiv|civitai|doi|hn|issues|openalex|pack|reddit|s2|yt):[^\s)\]>'\"`,;]+")
 
 SYSTEM = """\
 You are a research subagent working for another AI agent (Claude Code) that has a small context budget. Do the
@@ -136,7 +138,8 @@ def _args(call: dict[str, Any]) -> dict[str, Any]:
 
 
 def _report(answer: str, seen: str, calls: list[str], read_chars: int, steps: int) -> dict[str, Any]:
-    links = list(dict.fromkeys(u.rstrip(".,;:") for u in URL.findall(answer)))
+    found = URL.findall(answer) + [m.group(0) for m in SOURCE_ID.finditer(URL.sub(" ", answer))]
+    links = list(dict.fromkeys(u.rstrip(".,;:") for u in found))
     unverified = [u for u in links if u not in seen]
     out: dict[str, Any] = {"answer": answer.strip(), "sources": [u for u in links if u in seen], "steps": steps,
                            "tool_calls": calls, "read_chars": read_chars}

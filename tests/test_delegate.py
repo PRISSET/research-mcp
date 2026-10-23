@@ -37,17 +37,17 @@ def _call(name, **args):
 def test_subagent_reads_the_project_and_returns_only_the_answer(monkeypatch, project):
     real = delegate.run_tool
     monkeypatch.setattr(delegate, "run_tool", lambda name, args, root: (
-        "see https://github.com/kohya-ss/sd-scripts/issues/1492" if name == "web_search" else real(name, args, root)))
+        "see https://github.com/kohya-ss/sd-scripts/issues/1492 id gh:kohya-ss/sd-scripts#1492" if name == "web_search" else real(name, args, root)))
     sent = _scripted(monkeypatch, [
         {"content": "", "tool_calls": [_call("grep", pattern="LR ="), _call("web_search", query="lr")]},
         {"content": "", "tool_calls": [_call("read_file", path="train.py", start=1, lines=2)]},
-        {"content": "LR = 1e-4 (train.py:1), per https://github.com/kohya-ss/sd-scripts/issues/1492; "
-                    "see also https://example.com/made-up"},
+        {"content": "LR = 1e-4 (train.py:1), per https://github.com/kohya-ss/sd-scripts/issues/1492 "
+                    "(`gh:kohya-ss/sd-scripts#1492`); see also https://example.com/made-up, web:example.com/x"},
     ])
     out = delegate.delegate("what lr does train.py use?", project=str(project))
     assert out["answer"].startswith("LR = 1e-4") and out["steps"] == 3
-    assert out["sources"] == ["https://github.com/kohya-ss/sd-scripts/issues/1492"]
-    assert out["unverified_links"] == ["https://example.com/made-up"]
+    assert out["sources"] == ["https://github.com/kohya-ss/sd-scripts/issues/1492", "gh:kohya-ss/sd-scripts#1492"]
+    assert out["unverified_links"] == ["https://example.com/made-up", "web:example.com/x"]
     tool_msgs = [m for m in sent[2]["messages"] if m["role"] == "tool"]
     assert "train.py:1:LR = 1e-4" in tool_msgs[0]["content"] and "1: LR = 1e-4" in tool_msgs[2]["content"]
     names = {t["function"]["name"] for t in sent[0]["tools"]}
