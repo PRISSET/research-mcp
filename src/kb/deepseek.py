@@ -31,6 +31,10 @@ PORT = int(os.environ.get("KB_DEEPSEEK_PORT", "3085"))
 UNIT = Path("~/.config/systemd/user/research-deepseek.service").expanduser()
 MODEL = "deepseek-chat"
 QUEUE_WAIT = 900.0   # how long a request waits for the one in flight (a completion times out at 240 s)
+# The web chat answers "Messages too frequent" after a few quick messages (measured 2026-10-24: 3-4 requests a
+# second apart are refused, about one per 1.5 s passes for a while): keep a gap, and wait when refused anyway.
+MIN_GAP = float(os.environ.get("KB_DEEPSEEK_GAP", "2.0"))
+RATE_WAITS = (8.0, 15.0, 30.0, 60.0)
 
 
 class Unavailable(Exception):
@@ -149,6 +153,12 @@ def _one_at_a_time(wait: float = QUEUE_WAIT) -> Iterator[None]:
                 if time.monotonic() > deadline:
                     raise Unavailable(f"another DeepSeek request has been running for over {wait:.0f} s") from None
                 time.sleep(0.5)
+        last = data / "deepseek.last"   # when the previous completion started, in any process
+        try:
+            time.sleep(max(0.0, float(last.read_text()) + MIN_GAP - time.time()))
+        except (OSError, ValueError):
+            pass
+        last.write_text(str(time.time()))
         yield
 
 
@@ -160,12 +170,16 @@ def chat(messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None = No
     body: dict[str, Any] = {"model": MODEL, "messages": messages, "stream": False, "client_prompt": True}
     if tools:
         body["tools"] = tools
-    try:
-        with _one_at_a_time():
-            r = httpx.post(url() + "/v1/chat/completions", json=body, timeout=timeout,
-                           headers={"Authorization": f"Bearer {token()}"})
-    except httpx.HTTPError as e:
-        raise Unavailable(f"DeepSeek proxy: {type(e).__name__}: {e}") from e
+    for pause in (*RATE_WAITS, None):
+        try:
+            with _one_at_a_time():
+                r = httpx.post(url() + "/v1/chat/completions", json=body, timeout=timeout,
+                               headers={"Authorization": f"Bearer {token()}"})
+        except httpx.HTTPError as e:
+            raise Unavailable(f"DeepSeek proxy: {type(e).__name__}: {e}") from e
+        if r.status_code != 429 or pause is None:
+            break
+        time.sleep(pause)   # "Messages too frequent": the web chat lets us in again after a short wait
     if r.status_code != 200:
         hint = ("; the token is wrong: take userToken from DevTools → Application → Local Storage → "
                 "https://chat.deepseek.com (not a cookie), then `uv run kb keys set DEEPSEEK_CHAT_TOKEN …`"

@@ -39,8 +39,9 @@ IMAGE = re.compile(r"!\[([^\]]*)\]\([^)]*\)")
 SYSTEM = """\
 You are a research subagent working for another AI agent (Claude Code) that has a small context budget. Do the
 reading for it: search, open the promising sources (fetch pages, issues, papers, docs; read_file / grep the
-project's code) and keep going until you can answer with specifics. Prefer primary sources (official docs, the
-repository, maintainers' comments, papers) and recent ones; today is {today}.
+project's code) until you can answer with specifics. You have at most {steps} rounds of tool calls; most
+questions need 3-6: stop reading and answer as soon as the sources cover the question. Prefer primary sources
+(official docs, the repository, maintainers' comments, papers) and recent ones; today is {today}.
 
 Then answer ONLY with what the agent needs to act, at most {words} words, in the language of the task:
 - the answer first, with concrete values (versions, flags, numbers, commands, code locations as path:line);
@@ -176,12 +177,12 @@ def delegate(task: str, context: str | None = None, project: str | None = None, 
     prompt = task + (f"\n\nContext from the agent:\n{context}" if context else "")
     if root:
         prompt += f"\n\nThe project is at {root}; read_file / grep take paths inside it."
+    max_steps = max(1, min(max_steps, 30))
     messages: list[dict[str, Any]] = [
-        {"role": "system", "content": SYSTEM.format(today=datetime.date.today().isoformat(), words=words)},
+        {"role": "system", "content": SYSTEM.format(today=datetime.date.today().isoformat(), words=words, steps=max_steps)},
         {"role": "user", "content": prompt}]
     names = sorted(t["function"]["name"] for t in tools)
     seen, calls, read_chars, retries = "", [], 0, 0
-    max_steps = max(1, min(max_steps, 30))
     for step in range(1, max_steps + 1):
         _fit(messages)
         last = step == max_steps
@@ -201,6 +202,9 @@ def delegate(task: str, context: str | None = None, project: str | None = None, 
             messages += [{"role": "assistant", "content": content},
                          {"role": "user", "content": RETRY.format(names=", ".join(names))}]
             continue
+        if not tool_calls and not content.strip():
+            return {"error": "DeepSeek returned an empty reply", "tool_calls": calls,
+                    "next": "do the task yourself with this server's tools (what it read is in search_fulltext)"}
         if not tool_calls:
             return _report(content, seen, calls, read_chars, step)
         retries = 0

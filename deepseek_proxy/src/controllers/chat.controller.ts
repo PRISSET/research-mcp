@@ -590,6 +590,27 @@ export async function handleChatCompletions(req: IncomingMessage, res: ServerRes
         // чтобы границы считались по полному тексту.
         flushFenceBuffers(state);
 
+        // DeepSeek answered 200 but generated nothing (rate limit, a prompt over its limit, a busy session):
+        // report what it sent instead of an empty completion that a client would take for an answer.
+        if (!state.responseBuffer.trim() && !state.reasoningBuffer.trim()) {
+          // DeepSeek reports refusals as `event: hint` {type: "error", content: "Messages too frequent…"}
+          const hint = /event: *hint\s*\ndata: *(\{[^\n]*\})/.exec(responseBody);
+          let message = '';
+          try {
+            const h = hint ? JSON.parse(hint[1]) : null;
+            if (h && h.type === 'error') message = String(h.content || '');
+          } catch (e) {}
+          if (/too frequent|rate limit|try again later/i.test(message)) {
+            reportRateLimited(currentToken);
+            sendJsonError(res, 429, `DeepSeek: ${message}`, 'rate_limited');
+            return;
+          }
+          const upstream = message || responseBody.replace(/\s+/g, ' ').slice(0, 800);
+          console.error('[proxy] Empty completion from DeepSeek:', upstream);
+          sendJsonError(res, 502, `DeepSeek returned an empty completion: ${upstream}`, 'empty_completion');
+          return;
+        }
+
         // Применяем хардкодные последовательности к накопленному ответу.
         // В non-stream режиме придерживать нечего, поэтому неполный префикс
         // считается обычным текстом: полная стоп-фраза обрезает вывод, а

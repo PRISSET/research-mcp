@@ -8,6 +8,12 @@ import pytest
 from kb import deepseek, delegate
 
 
+@pytest.fixture(autouse=True)
+def no_pacing(monkeypatch, tmp_path):
+    monkeypatch.setattr(deepseek, "MIN_GAP", 0.0)
+    monkeypatch.setenv("KB_DATA_DIR", str(tmp_path / "data"))
+
+
 @pytest.fixture
 def project(tmp_path):
     r = tmp_path / "proj"
@@ -193,3 +199,68 @@ def test_markdown_images_do_not_reach_the_proxy(project):
     (project / "README.md").write_text("# X\n![overview](assets/overview.png) text\n")
     out = delegate.run_tool("read_file", {"path": "README.md"}, project)
     assert "[image: overview]" in out and "assets/overview.png" not in out
+
+
+def _fake_proxy(statuses):
+    """A proxy answering POSTs with the given statuses in turn (then 200)."""
+    seen = []
+
+    class Proxy(BaseHTTPRequestHandler):
+        def do_POST(self):
+            self.rfile.read(int(self.headers["Content-Length"]))
+            status = statuses.pop(0) if statuses else 200
+            seen.append(status)
+            body = json.dumps({"choices": [{"message": {"role": "assistant", "content": "ok"}}]} if status == 200
+                              else {"error": {"message": "DeepSeek: Messages too frequent. Try again later."}})
+            self.send_response(status)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body.encode())
+
+        def log_message(self, *a):
+            pass
+
+    srv = HTTPServer(("127.0.0.1", 0), Proxy)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv, seen
+
+
+@pytest.mark.parametrize("refusals, ok", [(2, True), (3, False)])
+def test_too_frequent_waits_and_retries(monkeypatch, refusals, ok):
+    srv, seen = _fake_proxy([429] * refusals)
+    monkeypatch.setenv("DEEPSEEK_PROXY_URL", f"http://127.0.0.1:{srv.server_port}")
+    monkeypatch.setenv("DEEPSEEK_CHAT_TOKEN", "tok")
+    monkeypatch.setattr(deepseek, "ensure_running", lambda: None)
+    monkeypatch.setattr(deepseek, "RATE_WAITS", (0.0, 0.0))     # two retries
+    try:
+        if ok:
+            assert deepseek.chat([{"role": "user", "content": "q"}])["content"] == "ok"
+        else:
+            with pytest.raises(deepseek.Unavailable, match="too frequent"):
+                deepseek.chat([{"role": "user", "content": "q"}])
+    finally:
+        srv.shutdown()
+    assert seen == ([429, 429, 200] if ok else [429, 429, 429])
+
+
+def test_completions_keep_a_gap(monkeypatch):
+    import time
+
+    srv, _ = _fake_proxy([])
+    monkeypatch.setenv("DEEPSEEK_PROXY_URL", f"http://127.0.0.1:{srv.server_port}")
+    monkeypatch.setenv("DEEPSEEK_CHAT_TOKEN", "tok")
+    monkeypatch.setattr(deepseek, "ensure_running", lambda: None)
+    monkeypatch.setattr(deepseek, "MIN_GAP", 0.4)
+    try:
+        t = time.monotonic()
+        for _ in range(3):
+            deepseek.chat([{"role": "user", "content": "q"}])
+    finally:
+        srv.shutdown()
+    assert time.monotonic() - t >= 0.8
+
+
+def test_empty_reply_is_an_error_not_an_answer(monkeypatch, project):
+    _scripted(monkeypatch, [{"content": "  "}])
+    out = delegate.delegate("q", project=str(project))
+    assert "empty" in out["error"] and "answer" not in out
