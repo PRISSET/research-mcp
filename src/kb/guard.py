@@ -245,23 +245,25 @@ def _command(event: str) -> str:
 HOOKS = {"UserPromptSubmit": ("prompt", None), "SessionStart": ("session", "compact|resume"), "Stop": ("stop", None)}
 
 
-def _without_ours(groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _without_ours(groups: list[dict[str, Any]], mark: str = MARK) -> list[dict[str, Any]]:
     out = []
     for g in groups:
-        hs = [h for h in g.get("hooks") or [] if MARK not in str(h.get("command") or "")]
+        hs = [h for h in g.get("hooks") or [] if mark not in str(h.get("command") or "")]
         if hs:
             out.append({**g, "hooks": hs})
     return out
 
 
-def install() -> str:
+def add_hooks(mark: str, entries: dict[str, tuple[str, str | None]], timeout: int = 20) -> str:
+    """Put our hooks ({event name: (command, matcher)}) in settings.json, replacing earlier ones with `mark`;
+    other hooks and settings stay, the old file is kept as a backup."""
     path = settings_path()
     cfg = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
     hooks = cfg.setdefault("hooks", {})
-    for name, (event, matcher) in HOOKS.items():
-        groups = _without_ours(hooks.get(name) or [])
+    for name, (command, matcher) in entries.items():
+        groups = _without_ours(hooks.get(name) or [], mark)
         groups.append({**({"matcher": matcher} if matcher else {}),
-                       "hooks": [{"type": "command", "command": _command(event), "timeout": 20}]})
+                       "hooks": [{"type": "command", "command": command, "timeout": timeout}]})
         hooks[name] = groups
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
@@ -271,7 +273,7 @@ def install() -> str:
     return str(path)
 
 
-def uninstall() -> bool:
+def remove_hooks(mark: str) -> bool:
     path = settings_path()
     try:
         cfg = json.loads(path.read_text(encoding="utf-8"))
@@ -280,7 +282,7 @@ def uninstall() -> bool:
     hooks = cfg.get("hooks") or {}
     found = False
     for name in list(hooks):
-        kept = _without_ours(hooks[name])
+        kept = _without_ours(hooks[name], mark)
         found = found or kept != hooks[name]
         if kept:
             hooks[name] = kept
@@ -290,6 +292,14 @@ def uninstall() -> bool:
         cfg.pop("hooks", None)
     path.write_text(json.dumps(cfg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return found
+
+
+def install() -> str:
+    return add_hooks(MARK, {name: (_command(event), matcher) for name, (event, matcher) in HOOKS.items()})
+
+
+def uninstall() -> bool:
+    return remove_hooks(MARK)
 
 
 if __name__ == "__main__":

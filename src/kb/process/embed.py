@@ -28,7 +28,7 @@ MODEL = os.environ.get("KB_EMBED_MODEL", "minishlab/potion-retrieval-32M")
 IDLE_UNLOAD = float(os.environ.get("KB_MODEL_IDLE", "600"))
 
 _lock = threading.Lock()
-_model: Any = None
+_models: dict[str, Any] = {}   # name -> loaded model (the notes memory uses a multilingual one)
 _last_use = 0.0
 _timer: threading.Timer | None = None
 
@@ -39,22 +39,22 @@ def available() -> bool:
     return find_spec("model2vec") is not None
 
 
-def model() -> Any:
+def model(name: str = MODEL) -> Any:
     """Loaded on first use, not at start (most sessions never search the base); local cache first."""
-    global _model, _last_use
+    global _last_use
     with _lock:
-        if _model is None:
+        if name not in _models:
             from model2vec import StaticModel
 
             try:
                 from huggingface_hub import snapshot_download
 
-                _model = StaticModel.from_pretrained(snapshot_download(MODEL, local_files_only=True))
+                _models[name] = StaticModel.from_pretrained(snapshot_download(name, local_files_only=True))
             except Exception:   # first run: not downloaded yet
-                _model = StaticModel.from_pretrained(MODEL)
+                _models[name] = StaticModel.from_pretrained(name)
         _last_use = time.monotonic()
         _schedule_unload()
-        return _model
+        return _models[name]
 
 
 def _schedule_unload() -> None:
@@ -67,15 +67,15 @@ def _schedule_unload() -> None:
 
 
 def _unload_if_idle() -> None:
-    global _model, _timer
+    global _timer
     with _lock:
         _timer = None
-        if _model is None:
+        if not _models:
             return
         if time.monotonic() - _last_use < IDLE_UNLOAD:
             _schedule_unload()
             return
-        _model = None
+        _models.clear()
         _matrix.cache_clear()
     _trim()
     log.info("embedding model unloaded after %.0f s idle", IDLE_UNLOAD)
@@ -94,17 +94,17 @@ def _trim() -> None:
         pass
 
 
-def _encode(texts: list[str]) -> np.ndarray:
-    v = np.asarray(model().encode(texts, show_progress_bar=False), dtype=np.float32)
+def _encode(texts: list[str], name: str = MODEL) -> np.ndarray:
+    v = np.asarray(model(name).encode(texts, show_progress_bar=False), dtype=np.float32)
     return v / np.maximum(np.linalg.norm(v, axis=1, keepdims=True), 1e-12)
 
 
-def encode_docs(texts: list[str]) -> np.ndarray:
-    return _encode(texts).astype(np.float16)
+def encode_docs(texts: list[str], name: str = MODEL) -> np.ndarray:
+    return _encode(texts, name).astype(np.float16)
 
 
-def encode_query(text: str) -> np.ndarray:
-    return _encode([text])[0]
+def encode_query(text: str, name: str = MODEL) -> np.ndarray:
+    return _encode([text], name)[0]
 
 
 def _check_model(db: Database) -> bool:

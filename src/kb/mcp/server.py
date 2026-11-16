@@ -61,6 +61,10 @@ items (done with where, or deferred with why) and say in the answer which were d
 Save your context: a job that means reading many pages, issues or large files goes to delegate(task=…,
 context=…, project=…) — a Gemini subagent reads with these tools and returns only the facts with their sources.
 
+Memory between chats: recall(query) gives the notes earlier chats and RESEARCH.md left on a topic, within a token
+budget; use it before reading RESEARCH.md sections in full. Save a lasting fact with remember(topic, text).
+The user's ComfyUI workflows on this machine: workflows(goal) gives paths, settings and what was recorded about them.
+
 Ignore licenses: do not open LICENSE files or license sections, and do not check, compare or mention licenses or
 commercial-use terms unless the user asks about them.
 
@@ -826,6 +830,55 @@ def notebook_add_source(section: str, source_id: str, notes: str, replace: bool 
         return _safe(lambda: notebook.add_paper(section, {**p, "grade": grade}, notes, replace))
 
     return _with_db(run)
+
+
+# ---------------- memory between chats ----------------
+
+@mcp.tool()
+def recall(query: str, topic: str | None = None, budget_tokens: int = 1200) -> dict:
+    """What earlier chats and RESEARCH.md know about `query`: the matching notes by topic, best first, within
+    `budget_tokens` (found by meaning and by words, Russian and English). Use it instead of reading whole
+    RESEARCH.md sections. topic: only that topic. Nothing found: the list of known topics."""
+    from kb.memory import store
+
+    def run(db: Database) -> dict:
+        synced = _safe(lambda: store.sync_notebook(db))
+        out = store.recall(db, query, topic, max(200, min(budget_tokens, 8000)))
+        if "error" in synced:
+            out["notebook"] = synced
+        return out
+
+    return _with_db(run)
+
+
+@mcp.tool()
+def remember(topic: str, text: str, project: str | None = None) -> dict:
+    """Save one lasting fact for later chats: a user preference, a decision and why, a setting that worked, a
+    result. topic: a short name (reuse one recall shows); text: 1-3 self-contained sentences with the concrete
+    values. A note of the topic saying the same thing is updated instead of duplicated."""
+    from kb.memory import store
+
+    return _with_db(lambda db: _safe(lambda: store.add(db, topic, text, "agent", project=project)))
+
+
+@mcp.tool()
+def workflows(goal: str, budget_tokens: int = 2000, rescan: bool = True) -> dict:
+    """Find the user's ComfyUI workflows on this machine by what they should achieve ("fast H3 clips with
+    DPcache, good faces", "upscale to 1080p"): each hit gives the file path and folder, models, sampler settings,
+    speed-up nodes and its notes, plus what earlier chats and RESEARCH.md recorded about such runs. Use it when the
+    user asks for a workflow, forgot where one is, or wants faster / better results; then propose speed / quality
+    compromises from what is recorded. rescan=false skips looking for new or changed files (KB_WORKFLOW_DIRS)."""
+    from kb.memory import workflows as wf
+
+    return _with_db(lambda db: _safe(lambda: wf.search(db, goal, max(400, min(budget_tokens, 8000)), rescan)))
+
+
+@mcp.tool()
+def forget(ids: list[int]) -> dict:
+    """Delete memory notes that turned out wrong or outdated (ids from recall)."""
+    from kb.memory import store
+
+    return {"deleted": _with_db(lambda db: store.forget(db, [int(i) for i in ids]))}
 
 
 # ---------------- prompt ----------------

@@ -34,6 +34,13 @@
   the issues say about an error, where in a big repo Y is handled) goes to `delegate(task=…, context=…, project=…)`
   — a Gemini subagent (your web login) reads with the research tools and returns only the facts with their sources; check
   the sources it lists before a claim decides something.
+- Memory between chats: before re-asking the user or reading RESEARCH.md sections in full, `recall(query)` — the
+  notes earlier chats (digested by a local model) and RESEARCH.md left, by topic, within a token budget. Save a
+  lasting fact (a preference, a decision and why, a setting that worked) with `remember(topic, text)`; `forget(ids)`
+  what turned out wrong.
+- The user's ComfyUI workflows: `workflows(goal)` finds them on disk by what they should achieve (path, folder,
+  models, steps / CFG, speed-up nodes, their notes) with what was recorded about such runs; name the file and
+  folder and propose speed / quality compromises from the recorded results.
 - Ignore licenses: do not open LICENSE files or license sections, do not check, compare or mention licenses or
   commercial-use terms unless the user asks about them.
 - When writing code: record each requirement, optimization, constraint or fact the user gives with `task_ledger`

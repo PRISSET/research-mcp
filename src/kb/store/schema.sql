@@ -182,3 +182,32 @@ CREATE TABLE IF NOT EXISTS recipes (
     date        TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_recipes_family ON recipes(family);
+
+-- Memory between chats: short notes by topic, written by the agent (remember), by the local model from finished
+-- chats, or mirrored from RESEARCH.md sections. recall() gives the agent only the pieces it needs.
+CREATE TABLE IF NOT EXISTS memories (
+    id       INTEGER PRIMARY KEY,
+    topic    TEXT NOT NULL,
+    text     TEXT NOT NULL,
+    origin   TEXT NOT NULL,                -- agent | chat | notebook
+    ref      TEXT,                         -- chat session id or notebook section id
+    project  TEXT,                         -- working directory it came from, if any
+    created  TEXT NOT NULL,
+    updated  TEXT NOT NULL,
+    emb      BLOB                          -- float16 vector (memory embedding model in meta)
+);
+CREATE INDEX IF NOT EXISTS idx_memories_origin ON memories(origin, ref);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
+    text, topic, content='memories', content_rowid='id', tokenize = 'unicode61 remove_diacritics 2'
+);
+CREATE TRIGGER IF NOT EXISTS memories_ai AFTER INSERT ON memories BEGIN
+    INSERT INTO memories_fts(rowid, text, topic) VALUES (new.id, new.text, new.topic);
+END;
+CREATE TRIGGER IF NOT EXISTS memories_ad AFTER DELETE ON memories BEGIN
+    INSERT INTO memories_fts(memories_fts, rowid, text, topic) VALUES ('delete', old.id, old.text, old.topic);
+END;
+CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE OF text, topic ON memories BEGIN
+    INSERT INTO memories_fts(memories_fts, rowid, text, topic) VALUES ('delete', old.id, old.text, old.topic);
+    INSERT INTO memories_fts(rowid, text, topic) VALUES (new.id, new.text, new.topic);
+END;

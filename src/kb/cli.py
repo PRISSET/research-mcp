@@ -180,6 +180,59 @@ def gemini_ask(task: str, project: str = typer.Option(None, help="repository the
     console.print_json(json.dumps(delegate(task, project=project, max_steps=max_steps), ensure_ascii=False))
 
 
+memory_app = typer.Typer(help="Memory between chats: topic notes, a local uncensored model digests finished chats",
+                         no_args_is_help=True)
+app.add_typer(memory_app, name="memory")
+
+
+@memory_app.command("install")
+def memory_install(hooks: bool = True) -> None:
+    """Download llama-server (CPU build) and the abliterated Gemma 4 E4B, add the Claude Code hooks, mirror
+    RESEARCH.md into the memory."""
+    from kb.memory import hook, llm, store
+
+    console.print(llm.install())
+    if hooks:
+        console.print(f"[green]memory hooks added[/] to {hook.install()}; they apply to new Claude Code sessions")
+    with Database() as db:
+        console.print({"notebook": store.sync_notebook(db)})
+
+
+@memory_app.command("uninstall")
+def memory_uninstall() -> None:
+    """Remove the hooks (notes and the model stay)."""
+    from kb.memory import hook
+
+    console.print("hooks removed" if hook.uninstall() else "no memory hooks found")
+
+
+@memory_app.command("status")
+def memory_status() -> None:
+    from kb.memory import llm, store
+
+    with Database() as db:
+        n = db.conn.execute("SELECT origin, COUNT(*) FROM memories GROUP BY origin").fetchall()
+        console.print({**llm.status(), "notes": {r[0]: r[1] for r in n}, "topics": store.topics(db, 15)})
+
+
+@memory_app.command("recall")
+def memory_recall(query: str, topic: str = typer.Option(None), budget: int = 1200) -> None:
+    from kb.memory import store
+
+    with Database() as db:
+        store.sync_notebook(db)
+        for n in store.recall(db, query, topic, budget)["notes"]:
+            console.print(f"[bold]#{n['id']} {n['topic']}[/] ({n['origin']}, {n['updated']})\n{n['text']}\n")
+
+
+@memory_app.command("digest")
+def memory_digest(transcript: Path, session: str = typer.Option(None), project: str = typer.Option(None)) -> None:
+    """Digest one Claude Code chat (~/.claude/projects/<dir>/<session>.jsonl) into notes now."""
+    from kb.memory import digest
+
+    console.print(digest.digest(transcript, session or transcript.stem, project))
+
+
 guard_app = typer.Typer(help="Code guard: task ledger + Claude Code hooks (open items on every prompt, no "
                              "finishing while items are open or code is unreviewed)", no_args_is_help=True)
 app.add_typer(guard_app, name="guard")

@@ -222,7 +222,7 @@ def _base(monkeypatch, tmp_path):
     monkeypatch.setenv("KB_DATA_DIR", str(tmp_path))
     monkeypatch.setattr("kb.store.db.settings", config.Settings())
     monkeypatch.setattr(embed, "available", lambda: True)
-    monkeypatch.setattr(embed, "model", lambda: _FakeStatic())
+    monkeypatch.setattr(embed, "model", lambda name=embed.MODEL: _FakeStatic())
     embed._matrix.cache_clear()
     db = Database()
     for pid, text in (("web:a", "int8 quantization of attention"), ("web:b", "sparse video attention cache")):
