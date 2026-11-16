@@ -37,10 +37,10 @@ KEYS: list[dict[str, str]] = [
      "get": "https://www.semanticscholar.org/product/api#api-key-form"},
     {"name": "OPENALEX_API_KEY", "improves": "OpenAlex paper search: higher daily limits; free",
      "get": "https://openalex.org/settings/api"},
-    {"name": "DEEPSEEK_CHAT_TOKEN", "improves": "delegate: a DeepSeek subagent (free web chat, through the bundled "
-                                                "proxy) reads sources for the agent and returns only the summary; "
-                                                "the token of your chat.deepseek.com login, several joined with |",
-     "get": "chat.deepseek.com → DevTools → Application → Local Storage → userToken; then uv run kb deepseek install"},
+    {"name": "GEMINI_PROXY_URL", "improves": "delegate: a Gemini subagent (your Gemini web login through a local "
+                                             "reverse proxy, gemini_reverse_api) reads sources for the agent and "
+                                             "returns only the summary; default http://127.0.0.1:3086",
+     "get": "run gemini_reverse_api (gemini-proxy.service); GEMINI_PROXY_TOKEN picks the account group (pool)"},
     {"name": "CIVITAI_API_KEY", "improves": "Civitai models / LoRAs: content behind login and higher limits; free",
      "get": "https://civitai.com/user/account"},
 ]

@@ -32,7 +32,7 @@
   blogs); if a result says an optional key would help, tell the user once (`uv run kb keys`).
 - Save your context: a job that means reading many pages, issues or large files (how a library configures X, what
   the issues say about an error, where in a big repo Y is handled) goes to `delegate(task=…, context=…, project=…)`
-  — a free DeepSeek subagent reads with the research tools and returns only the facts with their sources; check
+  — a Gemini subagent (your web login) reads with the research tools and returns only the facts with their sources; check
   the sources it lists before a claim decides something.
 - Ignore licenses: do not open LICENSE files or license sections, do not check, compare or mention licenses or
   commercial-use terms unless the user asks about them.

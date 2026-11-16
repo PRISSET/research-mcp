@@ -59,7 +59,7 @@ its helpers and style; after each step call review_code(project=…) and fix wha
 items (done with where, or deferred with why) and say in the answer which were done and where.
 
 Save your context: a job that means reading many pages, issues or large files goes to delegate(task=…,
-context=…, project=…) — a DeepSeek subagent reads with these tools and returns only the facts with their sources.
+context=…, project=…) — a Gemini subagent reads with these tools and returns only the facts with their sources.
 
 Ignore licenses: do not open LICENSE files or license sections, and do not check, compare or mention licenses or
 commercial-use terms unless the user asks about them.
@@ -682,7 +682,7 @@ def review_code(project: str | None = None, base: str | None = None, files: list
 @mcp.tool()
 def delegate(task: str, context: str | None = None, project: str | None = None, max_steps: int = 12,
              words: int = 400) -> dict:
-    """Hand a reading-heavy job to a DeepSeek subagent (free, through the user's web login) and get back only the
+    """Hand a reading-heavy job to a Gemini subagent (through the user's local Gemini web proxy) and get back only the
     distilled answer: it searches, fetches pages / issues / papers / docs, reads and greps the project's files with
     this server's tools, and returns the facts with their sources, so the raw text never enters your context. Use
     it for questions that need many sources or large files (how does X configure Y, what do the issues say about
@@ -693,7 +693,7 @@ def delegate(task: str, context: str | None = None, project: str | None = None, 
         task: the question, self-contained (the subagent sees nothing of your conversation)
         context: facts it needs (versions, the user's setup, what was already ruled out)
         project: a repository path to let it read and grep files there
-        max_steps: tool-calling rounds (each is one DeepSeek reply);  words: length limit of the answer
+        max_steps: tool-calling rounds (each is one Gemini reply);  words: length limit of the answer
     """
     from kb.delegate import delegate as _delegate
 
