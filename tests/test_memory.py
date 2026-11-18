@@ -300,7 +300,8 @@ def test_stop_asks_to_remember_after_enough_conversation(db, tmp_path, monkeypat
 
 
 def test_runs_are_linked_to_workflows_measured_and_rated(db, tmp_path):
-    from kb.memory import runs, workflows as wf
+    from kb.memory import runs
+    from kb.memory import workflows as wf
 
     wfdir, out = tmp_path / "wf", tmp_path / "out" / "pika_D"
     wfdir.mkdir()
@@ -333,7 +334,8 @@ def test_runs_are_linked_to_workflows_measured_and_rated(db, tmp_path):
 
 
 def test_run_graphs_are_not_catalog_workflows(db, tmp_path):
-    from kb.memory import runs, workflows as wf
+    from kb.memory import runs
+    from kb.memory import workflows as wf
 
     src, out = tmp_path / "pipeline", tmp_path / "out"
     src.mkdir()
@@ -370,7 +372,15 @@ def test_gallery_serves_only_recorded_files_and_saves_ratings(db, tmp_path):
             with pytest.raises(urllib.error.HTTPError):
                 urllib.request.urlopen(base + bad)
         body = json.dumps({"id": rid, "rating": 5, "comment": "отлично"}).encode()
-        assert json.loads(urllib.request.urlopen(base + "/rate", data=body).read())["rating"] == 5
+        with pytest.raises(urllib.error.HTTPError):                     # a plain form post from another site
+            urllib.request.urlopen(urllib.request.Request(base + "/rate", data=body, headers={
+                "Content-Type": "text/plain", "Origin": "https://evil.example"}))
+        req = urllib.request.Request(base + "/rate", data=body, headers={"Content-Type": "application/json"})
+        assert json.loads(urllib.request.urlopen(req).read())["rating"] == 5
+        tail = urllib.request.Request(f"{base}/file/{rid}", headers={"Range": "bytes=-3"})
+        assert urllib.request.urlopen(tail).read() == b"789"
+        with pytest.raises(urllib.error.HTTPError, match="416"):
+            urllib.request.urlopen(urllib.request.Request(f"{base}/file/{rid}", headers={"Range": "bytes=50-60"}))
     finally:
         srv.shutdown()
     assert runs.listing(db)[0]["rating"] == 5

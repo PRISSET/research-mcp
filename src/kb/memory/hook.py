@@ -65,17 +65,23 @@ def remind(data: dict[str, Any]) -> dict[str, Any] | None:
     transcript, session = data.get("transcript_path"), data.get("session_id")
     if data.get("stop_hook_active") or not transcript or not session:
         return None
-    state_file = llm.home() / "remind.json"
-    try:
-        state = json.loads(state_file.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        state = {}
-    messages, n_lines = digest.read_chat(Path(transcript), int(state.get(session, 0)))
-    if sum(len(t) for _, t in messages) < REMIND_CHARS:
-        return None
-    state[session] = n_lines
+    import fcntl
+
     llm.home().mkdir(parents=True, exist_ok=True)
-    state_file.write_text(json.dumps(state), encoding="utf-8")
+    state_file = llm.home() / "remind.json"
+    with open(llm.home() / "remind.lock", "w") as lock:   # sessions stop in parallel: one read-modify-write at a time
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            state = json.loads(state_file.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            state = {}
+        messages, n_lines = digest.read_chat(Path(transcript), int(state.get(session, 0)))
+        if sum(len(t) for _, t in messages) < REMIND_CHARS:
+            return None
+        state[session] = n_lines
+        tmp = state_file.with_suffix(".tmp")
+        tmp.write_text(json.dumps(state), encoding="utf-8")
+        tmp.replace(state_file)
     return {"decision": "block", "reason": REMIND}
 
 

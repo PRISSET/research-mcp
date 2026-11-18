@@ -27,8 +27,9 @@ def _thumbs() -> Path:
 
 
 def thumbnail(run_id: int, output: str) -> Path | None:
-    """A 360 px poster frame of the result (made once with ffmpeg, then cached)."""
-    out = _thumbs() / f"{run_id}.jpg"
+    """A 360 px poster frame of the result (made once with ffmpeg, then cached per file version)."""
+    st = Path(output).stat()
+    out = _thumbs() / f"{run_id}-{st.st_mtime_ns}-{st.st_size}.jpg"
     if out.exists():
         return out
     src = Path(output)
@@ -86,7 +87,7 @@ c.innerHTML=`<div class="media">${r.output?`<img loading="lazy" src="/thumb/${r.
 <textarea placeholder="Комментарий: что хорошо, что плохо">${esc(r.comment||"")}</textarea>
 <div class="row">${r.output?'<button data-c="out">путь к видео</button>':""}${r.workflow?'<button data-c="wf">путь к workflow</button>':""}<button data-c="dir">папка</button></div></div>`;
 const m=c.querySelector(".media");if(r.output)m.onclick=()=>{m.innerHTML=`<video controls autoplay src="/file/${r.id}"></video>`;m.onclick=null};
-const ta=c.querySelector("textarea");const save=v=>fetch("/rate",{method:"POST",body:JSON.stringify({id:r.id,rating:v,comment:ta.value})}).then(x=>x.json()).then(j=>{if(j.error)alert(j.error);else{r.rating=v;c.querySelectorAll(".stars span").forEach(s=>s.classList.toggle("on",+s.dataset.v<=v))}});
+const ta=c.querySelector("textarea");const save=v=>fetch("/rate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:r.id,rating:v,comment:ta.value})}).then(x=>x.json()).then(j=>{if(j.error)alert(j.error);else{r.rating=v;c.querySelectorAll(".stars span").forEach(s=>s.classList.toggle("on",+s.dataset.v<=v))}});
 c.querySelectorAll(".stars span").forEach(s=>s.onclick=()=>save(+s.dataset.v));ta.onchange=()=>{if(r.rating)save(r.rating)};
 c.querySelectorAll("[data-c]").forEach(b=>b.onclick=()=>copy({out:r.output,wf:r.workflow,dir:r.folder}[b.dataset.c]));return c}
 D.runs.forEach(r=>$("#rg").appendChild(card(r)));$("#rn").textContent=`${D.runs.length} прогонов. Клик по кадру — видео; звёзды сохраняют оценку (её видит агент).`;
@@ -145,9 +146,18 @@ class Handler(BaseHTTPRequestHandler):
         start, end = 0, size - 1
         rng = self.headers.get("Range", "")
         if rng.startswith("bytes="):
-            a, _, b = rng[6:].partition("-")
-            start = int(a) if a.isdigit() else 0
-            end = min(int(b), size - 1) if b.isdigit() else size - 1
+            a, _, b = rng[6:].split(",")[0].partition("-")
+            if not a and b.isdigit():               # bytes=-N: the last N bytes
+                start = max(0, size - int(b))
+            else:
+                start = int(a) if a.isdigit() else 0
+                end = min(int(b), size - 1) if b.isdigit() else size - 1
+            if start > end or start >= size:
+                self.send_response(416)
+                self.send_header("Content-Range", f"bytes */{size}")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
         self.send_response(206 if rng else 200)
         self.send_header("Content-Type", mimetypes.guess_type(path.name)[0] or "application/octet-stream")
         self.send_header("Accept-Ranges", "bytes")
@@ -171,6 +181,10 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         if self.path != "/rate":
             return self._send(404, b"not found", "text/plain")
+        origin = self.headers.get("Origin")
+        host = self.headers.get("Host", "")
+        if self.headers.get("Content-Type") != "application/json" or (origin and origin != f"http://{host}"):
+            return self._send(403, b"rate from the gallery page only", "text/plain")   # no cross-site writes
         try:
             body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
             with Database() as db:

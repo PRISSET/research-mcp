@@ -102,7 +102,7 @@ def describe(path: Path) -> str | None:
     notes = [str(v).strip() for n in nodes if NOTE.search(n["type"]) for v in n["values"].values()
              if isinstance(v, str) and len(v.strip()) > 20]
     speed = [t for t in types if SPEED.search(t)]
-    readme = next((p for p in (path.parent / "README.md", path.parent / "readme.md") if p.exists()), None)
+    readme = _readme(path.parent)
     parts = [f"Workflow {path.name} in {path.parent} (changed {datetime.fromtimestamp(path.stat().st_mtime):%Y-%m-%d}).",
              f"Models: {', '.join(models[:12])}." if models else "",
              f"Sampling: {'; '.join(samplers[:4])}." if samplers else "",
@@ -110,8 +110,17 @@ def describe(path: Path) -> str | None:
              f"Speed-ups: {', '.join(speed[:12])}." if speed else "",
              f"Notes: {' | '.join(notes)[:NOTE_CHARS]}" if notes else "",
              f"Nodes: {', '.join(types[:30])}.",
-             f"Folder README: {readme.read_text(encoding='utf-8', errors='replace')[:300].strip()}" if readme else ""]
+             f"Folder README: {readme}" if readme else ""]
     return "\n".join(p for p in parts if p)[:TEXT_CHARS]
+
+
+def _readme(folder: Path) -> str | None:
+    for p in (folder / "README.md", folder / "readme.md"):
+        try:
+            return p.read_text(encoding="utf-8", errors="replace")[:300].strip() if p.is_file() else None
+        except OSError:
+            continue
+    return None
 
 
 def topic(path: Path) -> str:

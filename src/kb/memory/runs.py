@@ -47,11 +47,11 @@ def _entries(path: Path) -> dict[str, dict[str, Any]]:
 
 def _workflow_for(db: Database, name: str) -> str | None:
     """The catalog workflow whose file stem the run name starts with (the longest such stem wins)."""
-    best = None
+    best, best_len = None, 0
     for (ref,) in db.conn.execute("SELECT ref FROM memories WHERE origin = 'workflow'"):
         stem = Path(ref).stem.removesuffix(".api")
-        if (name == stem or name.startswith(stem + "_")) and (best is None or len(stem) > len(Path(best).stem)):
-            best = ref
+        if (name == stem or name.startswith(stem + "_")) and (best is None or len(stem) > best_len):
+            best, best_len = ref, len(stem)
     return best
 
 
