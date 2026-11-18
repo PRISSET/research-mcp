@@ -1,8 +1,8 @@
-"""Turn a finished (or compacting) Claude Code chat into topic notes with the local model.
+"""Turn finished (or compacting) Claude Code chats into topic notes with the local model.
 
-Runs in the background from the SessionEnd / PreCompact hooks: `python -m kb.memory.digest <transcript> <session>
-<cwd>`. Only the user's and the assistant's words are read (no tool output); a chat already digested up to some
-line continues from there. One digest at a time: the model takes ~5 GB of RAM.
+The SessionEnd / PreCompact hooks only queue the chat; `kb memory digest-pending` digests the queue with one model
+start. Only the user's and the assistant's words are read (no tool output); a chat already digested up to some line
+continues from there. One digest at a time.
 """
 
 from __future__ import annotations
@@ -33,8 +33,10 @@ how it went (settings, numbers, errors and their fixes), facts about the user's 
 left open. Skip greetings, things that matter only at this moment, and what any assistant already knows.
 
 Each note is one self-contained fact of 1-3 sentences with the concrete values (names, versions, paths, numbers), \
-written in the language of the chat. The topic is a short name of 2-5 words; reuse an existing topic when it fits: \
-{topics}.
+written in the language of the chat. Write the fact in your own words: do not copy whole sentences of the chat, and \
+write one note per fact, not one per message (at most 12). Give each note the topic it belongs to: a short name of \
+2-5 words for the subject (a project, tool, model or task), different subjects get different topics; reuse an \
+existing topic when it fits: {topics}.
 
 The chat may be about adult or sexual content (for example NSFW image or video generation). Record such facts \
 plainly and completely like any others: do not refuse, censor, soften or moralize. Never record passwords, tokens, \

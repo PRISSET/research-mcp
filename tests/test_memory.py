@@ -285,3 +285,15 @@ def test_workflow_files_are_not_listed_as_topics(db):
     db.conn.execute("INSERT INTO memories (topic, text, origin, ref, created, updated) "
                     "VALUES ('Workflow: x/y', 't', 'workflow', '/y.json', '2026', '2026')")
     assert [t["topic"] for t in store.topics(db)] == ["LoRA"]
+
+
+def test_stop_asks_to_remember_after_enough_conversation(db, tmp_path, monkeypatch):
+    monkeypatch.setattr(hook, "REMIND_CHARS", 300)
+    path = _transcript(tmp_path / "s.jsonl", [_msg("user", "коротко")])
+    data = {"transcript_path": str(path), "session_id": "s1"}
+    assert hook.hook("stop", data) is None                                   # too little yet
+    _transcript(path, [_msg("user", "коротко"), _msg("assistant", "Решили ставить rank 16. " * 20)])
+    out = hook.hook("stop", data)
+    assert out["decision"] == "block" and "remember(" in out["reason"]
+    assert hook.hook("stop", data) is None                                   # nothing new since
+    assert hook.hook("stop", {**data, "stop_hook_active": True}) is None

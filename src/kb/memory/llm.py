@@ -1,4 +1,7 @@
-"""The local memory model: an uncensored (abliterated) Gemma 4 E4B in llama.cpp's llama-server.
+"""The local memory model: an uncensored (abliterated) Qwen3.5 2B in llama.cpp's llama-server.
+
+Chosen by measurement on a real chat (4 threads): 2.2 GB of RAM and ~1 min per chat, against 7.6 GB for Gemma 4
+E4B (which wrote tidier notes) and 4.9 GB for Qwen3.5 4B (which wrote almost none).
 
 It runs only while a finished chat is digested (started, used, stopped), so it holds no RAM or VRAM the rest of
 the time. CPU by default: the video card belongs to ComfyUI; KB_MEMORY_GPU_LAYERS moves layers to a GPU build.
@@ -22,12 +25,12 @@ import httpx
 
 log = logging.getLogger(__name__)
 
-MODEL_REPO = "huihui-ai/Huihui-gemma-4-E4B-it-qat-q4_0-unquantized-abliterated-GGUF"
-MODEL_FILE = "Huihui-gemma-4-E4B-it-qat-q4_0-unquantized-abliterated-Q4_K.gguf"
+MODEL_REPO = "mradermacher/Huihui-Qwen3.5-2B-abliterated-GGUF"
+MODEL_FILE = "Huihui-Qwen3.5-2B-abliterated.Q4_K_M.gguf"
 RELEASES = "https://api.github.com/repos/ggml-org/llama.cpp/releases?per_page=10"
 CPU_ASSET = "-bin-ubuntu-x64.tar.gz"
 START_WAIT = 180.0
-MIN_FREE_GB = float(os.environ.get("KB_MEMORY_MIN_FREE_GB", "10"))   # model + context need ~6.5 GB
+MIN_FREE_GB = float(os.environ.get("KB_MEMORY_MIN_FREE_GB", "6"))    # model + context need ~2.2 GB
 FREE_WAIT = float(os.environ.get("KB_MEMORY_FREE_WAIT", "3600"))     # how long to wait for that much free RAM
 
 
@@ -40,8 +43,7 @@ def home() -> Path:
 
 
 def model_path() -> Path:
-    return Path(os.environ.get("KB_MEMORY_MODEL") or home() / "models" / "gemma-4-e4b-abliterated-Q4_K.gguf"
-                ).expanduser()
+    return Path(os.environ.get("KB_MEMORY_MODEL") or home() / "models" / MODEL_FILE).expanduser()
 
 
 def port() -> int:
