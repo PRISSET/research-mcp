@@ -169,6 +169,17 @@ def gemini_status() -> None:
     console.print_json(json.dumps(gemini.status(), ensure_ascii=False))
 
 
+@gemini_app.command("hook")
+def gemini_hook(action: str = typer.Argument("install", help="install | uninstall")) -> None:
+    """Refuse the first heavy read of a session (WebFetch, several pages, a big file) with a pointer to delegate."""
+    from kb import nudge
+
+    if action == "uninstall":
+        console.print("removed" if nudge.uninstall() else "no delegate hook found")
+    else:
+        console.print(f"[green]delegate hook added[/] to {nudge.install()}; it applies to new Claude Code sessions")
+
+
 @gemini_app.command("ask")
 def gemini_ask(task: str, project: str = typer.Option(None, help="repository the subagent may read"),
                max_steps: int = 12) -> None:
