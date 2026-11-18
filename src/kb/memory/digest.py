@@ -20,7 +20,7 @@ from kb.store import Database
 
 log = logging.getLogger(__name__)
 
-MAX_CHARS = 32_000     # of chat text per digest: ~11k tokens, fits the 16k context with room for the answer
+MAX_CHARS = 24_000     # of chat text per part: ~8k tokens, fits the 12k context with room for the answer
 PER_MESSAGE = 1_500
 MIN_NEW = 400          # less new text than this is not worth starting the model
 NOISE = re.compile(r"<(system-reminder|command-[a-z-]+|local-command-[a-z-]+)>.*?</\1>", re.DOTALL)
@@ -122,7 +122,7 @@ def digest(transcript: Path, session: str, project: str | None = None) -> dict[s
     with llm.running():
         for end, chat in portions(messages):
             with Database() as db:
-                known = ", ".join(t["topic"] for t in store.topics(db)) or "(none yet)"
+                known = ", ".join(t["topic"] for t in store.topics(db, origins=("chat", "agent"))) or "(none yet)"
             notes = parse_notes(llm.chat([{"role": "user", "content": PROMPT.format(topics=known, chat=chat)}],
                                          schema=SCHEMA))
             with Database() as db:
@@ -139,6 +139,7 @@ def main(argv: list[str]) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
     transcript, session, project = Path(argv[0]), argv[1], (argv[2] if len(argv) > 2 else None)
     llm.home().mkdir(parents=True, exist_ok=True)
+    llm.background()   # the model it starts inherits this: idle CPU only
     with open(llm.home() / "digest.lock", "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)   # one model at a time; a second digest waits for the first
         try:

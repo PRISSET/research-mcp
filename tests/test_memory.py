@@ -251,3 +251,19 @@ def test_broken_workflow_files_do_not_stop_the_scan(db, tmp_path):
     assert wf.scan(db, [d])["workflows"] == 1
     assert wf.scan(db, [tmp_path / "elsewhere"])["removed"] == 0        # files still there keep their notes
     assert db.conn.execute("SELECT COUNT(*) FROM memories WHERE origin = 'workflow'").fetchone()[0] == 1
+
+
+def test_digest_waits_for_free_memory_then_gives_up(monkeypatch):
+    free = iter([4.0, 12.0])
+    monkeypatch.setattr(llm, "free_gb", lambda: next(free))
+    llm.wait_for_memory(need=10, wait=60, step=0)                       # waited once, then enough
+    monkeypatch.setattr(llm, "free_gb", lambda: 2.0)
+    with pytest.raises(llm.Unavailable, match="postponed"):
+        llm.wait_for_memory(need=10, wait=0, step=0)
+
+
+def test_workflow_files_are_not_listed_as_topics(db):
+    store.add(db, "LoRA", "rank 16")
+    db.conn.execute("INSERT INTO memories (topic, text, origin, ref, created, updated) "
+                    "VALUES ('Workflow: x/y', 't', 'workflow', '/y.json', '2026', '2026')")
+    assert [t["topic"] for t in store.topics(db)] == ["LoRA"]

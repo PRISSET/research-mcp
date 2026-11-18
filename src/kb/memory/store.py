@@ -109,10 +109,13 @@ def forget(db: Database, ids: list[int]) -> int:
     return n
 
 
-def topics(db: Database, limit: int = 40) -> list[dict[str, Any]]:
+def topics(db: Database, limit: int = 40, origins: tuple[str, ...] = ("chat", "agent", "notebook")
+           ) -> list[dict[str, Any]]:
+    """Topics of notes (the workflow catalog has one per file: it is listed by workflows(), not here)."""
     return [dict(r) for r in db.conn.execute(
-        "SELECT topic, COUNT(*) AS notes, MAX(updated) AS updated FROM memories GROUP BY topic COLLATE NOCASE "
-        "ORDER BY MAX(updated) DESC LIMIT ?", (limit,))]
+        f"SELECT topic, COUNT(*) AS notes, MAX(updated) AS updated FROM memories "
+        f"WHERE origin IN ({','.join('?' * len(origins))}) GROUP BY topic COLLATE NOCASE "
+        "ORDER BY MAX(updated) DESC LIMIT ?", (*origins, limit))]
 
 
 def _fts_query(text: str) -> str:

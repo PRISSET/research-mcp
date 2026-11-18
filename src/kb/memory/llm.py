@@ -27,6 +27,8 @@ MODEL_FILE = "Huihui-gemma-4-E4B-it-qat-q4_0-unquantized-abliterated-Q4_K.gguf"
 RELEASES = "https://api.github.com/repos/ggml-org/llama.cpp/releases?per_page=10"
 CPU_ASSET = "-bin-ubuntu-x64.tar.gz"
 START_WAIT = 180.0
+MIN_FREE_GB = float(os.environ.get("KB_MEMORY_MIN_FREE_GB", "10"))   # model + context need ~6.5 GB
+FREE_WAIT = float(os.environ.get("KB_MEMORY_FREE_WAIT", "3600"))     # how long to wait for that much free RAM
 
 
 class Unavailable(Exception):
@@ -65,6 +67,45 @@ def status() -> dict[str, Any]:
             "running": _healthy(), "gpu_layers": int(os.environ.get("KB_MEMORY_GPU_LAYERS", "0"))}
 
 
+def threads() -> int:
+    """A third of the cores by default: the digest runs in the background and is not in a hurry."""
+    return int(os.environ.get("KB_MEMORY_THREADS") or max(2, (os.cpu_count() or 6) // 3))
+
+
+def free_gb() -> float:
+    try:
+        for line in Path("/proc/meminfo").read_text().splitlines():
+            if line.startswith("MemAvailable:"):
+                return int(line.split()[1]) / 1024 / 1024
+    except (OSError, ValueError, IndexError):
+        pass
+    return float("inf")   # not Linux: do not block
+
+
+def background() -> None:
+    """This process and what it starts get the CPU only when nothing else wants it (Linux SCHED_IDLE), and the
+    disk last; other systems get the lowest nice."""
+    try:
+        os.sched_setscheduler(0, os.SCHED_IDLE, os.sched_param(0))
+    except (AttributeError, OSError):
+        try:
+            os.nice(19)
+        except OSError:
+            pass
+    if shutil.which("ionice"):
+        subprocess.run(["ionice", "-c", "3", "-p", str(os.getpid())], check=False, capture_output=True)
+
+
+def wait_for_memory(need: float = MIN_FREE_GB, wait: float = FREE_WAIT, step: float = 30.0) -> None:
+    """Hold the start while RAM is short (ComfyUI running); give up after `wait` so the chat is tried next time."""
+    deadline = time.monotonic() + wait
+    while free_gb() < need:
+        if time.monotonic() > deadline:
+            raise Unavailable(f"only {free_gb():.1f} GB RAM free for {wait / 60:.0f} min (need {need:g}): "
+                              "digest postponed to the next chat end")
+        time.sleep(step)
+
+
 def _healthy() -> bool:
     try:
         return httpx.get(f"{url()}/health", timeout=2).status_code == 200
@@ -82,8 +123,9 @@ def running() -> Iterator[None]:
     if binary is None or not model.exists():
         raise Unavailable("the memory model is not installed: run `uv run kb memory install`")
     cmd = [str(binary), "-m", str(model), "--host", "127.0.0.1", "--port", str(port()),
-           "-c", os.environ.get("KB_MEMORY_CTX", "16384"), "-t", str(max(1, (os.cpu_count() or 4) - 2)),
+           "-c", os.environ.get("KB_MEMORY_CTX", "12288"), "-t", str(threads()), "-tb", str(threads()), "-np", "1",
            "-ngl", os.environ.get("KB_MEMORY_GPU_LAYERS", "0")]
+    wait_for_memory()
     home().mkdir(parents=True, exist_ok=True)
     with open(home() / "llama-server.log", "ab") as logf:
         proc = subprocess.Popen(cmd, stdout=logf, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
