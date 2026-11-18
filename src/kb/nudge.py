@@ -1,9 +1,9 @@
 """PreToolUse hook: hand heavy reading to the Gemini subagent (delegate) instead of pulling it into Claude's context.
 
-The first time in a session that Claude goes to read something big — a WebFetch, a fetch of several pages, a Read
-of a large file without a line range — the call is refused once with a pointer to delegate. Calling again with the
+The first time in a session that Claude goes to read something big — a fetch of several pages, a Read of a large file
+without a line range — the call is refused once with a pointer to delegate. Calling again with the
 same target goes through, so raw text is still there when it is really needed. Nothing is refused while the Gemini
-proxy is down.
+proxy is down. WebFetch is left alone: it already returns a short digest of the page, not its text.
 
     uv run kb gemini hook install      # adds it to ~/.claude/settings.json
 """
@@ -19,7 +19,7 @@ from typing import Any
 from kb.config import ROOT
 
 MARK = "kb.nudge"
-MATCHER = "WebFetch|Read|mcp__research__fetch"
+MATCHER = "Read|mcp__research__fetch"
 BIG_FILE = 40_000      # bytes: a Read of more than this without offset / limit goes to delegate first
 KEEP_SESSIONS = 50
 REASON = ("This pulls a lot of text into your context. Hand it to delegate(task=<what you need from it>, "
@@ -47,8 +47,6 @@ def uninstall() -> bool:
 
 def target(tool: str, args: dict[str, Any]) -> str | None:
     """What a heavy read would pull in (a URL, several, a big file), or None for a light call."""
-    if tool == "WebFetch":
-        return args.get("url") or None
     if tool == "mcp__research__fetch":
         many = list(args.get("urls") or []) + list(args.get("paper_ids") or [])
         return " ".join(sorted(map(str, many))) if len(many) >= 2 else None

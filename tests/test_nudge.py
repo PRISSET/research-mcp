@@ -22,8 +22,7 @@ def test_first_heavy_read_is_sent_to_delegate_then_allowed(tmp_path):
     reason = out["hookSpecificOutput"]["permissionDecisionReason"]
     assert out["hookSpecificOutput"]["permissionDecision"] == "deny" and 'project="/proj"' in reason
     assert nudge.hook(_call("Read", file_path=str(big))) is None                 # the same call again goes through
-    assert nudge.hook(_call("WebFetch", url="https://a.example/doc"))["hookSpecificOutput"]
-    assert nudge.hook({**_call("WebFetch", url="https://a.example/doc"), "session_id": "s2"})   # per session
+    assert nudge.hook({**_call("Read", file_path=str(big)), "session_id": "s2"})   # per session
 
 
 @pytest.mark.parametrize("call", [
@@ -31,6 +30,7 @@ def test_first_heavy_read_is_sent_to_delegate_then_allowed(tmp_path):
     _call("mcp__research__fetch", url="https://a.example"),
     _call("mcp__research__fetch", urls=["https://a.example"]),
     _call("Bash", command="cat big"),
+    _call("WebFetch", url="https://a.example/doc"),                       # already a digest, not raw text
 ])
 def test_light_calls_pass(call):
     assert nudge.hook(call) is None
@@ -48,7 +48,7 @@ def test_ranges_images_and_several_pages(tmp_path):
 
 def test_nothing_is_refused_while_the_proxy_is_down(tmp_path, monkeypatch):
     monkeypatch.setattr(nudge, "_proxy_up", lambda: False)
-    assert nudge.hook(_call("WebFetch", url="https://a.example")) is None
+    assert nudge.hook(_call("mcp__research__fetch", urls=["https://a", "https://b"])) is None
 
 
 def test_install_uses_the_tool_matcher(tmp_path, monkeypatch):

@@ -171,7 +171,7 @@ def gemini_status() -> None:
 
 @gemini_app.command("hook")
 def gemini_hook(action: str = typer.Argument("install", help="install | uninstall")) -> None:
-    """Refuse the first heavy read of a session (WebFetch, several pages, a big file) with a pointer to delegate."""
+    """Refuse the first heavy read of a session (several pages, a big file) with a pointer to delegate."""
     from kb import nudge
 
     if action == "uninstall":
