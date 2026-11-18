@@ -345,3 +345,32 @@ def test_run_graphs_are_not_catalog_workflows(db, tmp_path):
     assert wf.scan(db, [tmp_path])["workflows"] == 1
     runs.scan(db, [tmp_path])
     assert runs.listing(db)[0]["workflow"] == str(src / "B_pika_6step.json")
+
+
+def test_gallery_serves_only_recorded_files_and_saves_ratings(db, tmp_path):
+    import threading
+    import urllib.request
+
+    from kb.memory import gallery, runs
+
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "a.mp4").write_bytes(b"0123456789")
+    (out / "results.json").write_text(json.dumps({"a": {"exec_s": 10, "file": "a.mp4"}}))
+    runs.scan(db, [out])
+    rid = runs.listing(db)[0]["id"]
+    srv = gallery.serve(port=0, rescan=False)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{srv.server_port}"
+    try:
+        assert "Workflow Lab" in urllib.request.urlopen(base + "/").read().decode()
+        req = urllib.request.Request(f"{base}/file/{rid}", headers={"Range": "bytes=2-5"})
+        assert urllib.request.urlopen(req).read() == b"2345"
+        for bad in ("/file/999", "/file/..%2F..%2Fetc%2Fpasswd", "/thumb/x"):
+            with pytest.raises(urllib.error.HTTPError):
+                urllib.request.urlopen(base + bad)
+        body = json.dumps({"id": rid, "rating": 5, "comment": "отлично"}).encode()
+        assert json.loads(urllib.request.urlopen(base + "/rate", data=body).read())["rating"] == 5
+    finally:
+        srv.shutdown()
+    assert runs.listing(db)[0]["rating"] == 5

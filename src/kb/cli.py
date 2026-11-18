@@ -239,6 +239,24 @@ def memory_runs(limit: int = 30) -> None:
             console.print(f"#{r['id']} {mark}{r['name']}  {took}  {r.get('size', '')}  {r.get('output') or r['folder']}")
 
 
+@memory_app.command("gallery")
+def memory_gallery(port: int = 3088, open_browser: bool = True) -> None:
+    """Local page of runs (poster, video, time, size, rating) and the workflow catalog; Ctrl+C stops it."""
+    import webbrowser
+
+    from kb.memory import gallery
+
+    srv = gallery.serve(port)
+    url = f"http://127.0.0.1:{port}"
+    console.print(f"Workflow Lab: {url}  (only this machine; Ctrl+C to stop)")
+    if open_browser:
+        webbrowser.open(url)
+    try:
+        srv.serve_forever()
+    except KeyboardInterrupt:
+        srv.server_close()
+
+
 @memory_app.command("rate")
 def memory_rate(run: str, rating: int, comment: str = typer.Argument(None)) -> None:
     """Rate a run 1-5: `kb memory rate D_video_full_curtsy 4 "лицо плывёт на 3 с"`."""
