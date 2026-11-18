@@ -874,6 +874,15 @@ def workflows(goal: str, budget_tokens: int = 2000, rescan: bool = True) -> dict
 
 
 @mcp.tool()
+def rate_run(run: str, rating: int, comment: str | None = None) -> dict:
+    """Save the user's verdict on one workflow run (id or name from workflows(), rating 1-5, a short comment on
+    what was good or bad): later goals are answered from these ratings."""
+    from kb.memory import runs
+
+    return _with_db(lambda db: _safe(lambda: runs.rate(db, run, rating, comment)))
+
+
+@mcp.tool()
 def forget(ids: list[int]) -> dict:
     """Delete memory notes that turned out wrong or outdated (ids from recall)."""
     from kb.memory import store

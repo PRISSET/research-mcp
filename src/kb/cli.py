@@ -225,6 +225,29 @@ def memory_recall(query: str, topic: str = typer.Option(None), budget: int = 120
             console.print(f"[bold]#{n['id']} {n['topic']}[/] ({n['origin']}, {n['updated']})\n{n['text']}\n")
 
 
+@memory_app.command("runs")
+def memory_runs(limit: int = 30) -> None:
+    """Workflow runs found on disk (results.json of the run scripts), newest first, with ratings."""
+    from kb.memory import runs, workflows
+
+    with Database() as db:
+        workflows.scan(db)
+        console.print(runs.scan(db))
+        for r in runs.listing(db, limit):
+            mark = f"[bold]{r['rating']}/5[/] " if r.get("rating") else ""
+            took = f"{r['exec_s']:.0f} s" if r.get("exec_s") else r.get("error", "")[:60]
+            console.print(f"#{r['id']} {mark}{r['name']}  {took}  {r.get('size', '')}  {r.get('output') or r['folder']}")
+
+
+@memory_app.command("rate")
+def memory_rate(run: str, rating: int, comment: str = typer.Argument(None)) -> None:
+    """Rate a run 1-5: `kb memory rate D_video_full_curtsy 4 "лицо плывёт на 3 с"`."""
+    from kb.memory import runs
+
+    with Database() as db:
+        console.print(runs.rate(db, run, rating, comment))
+
+
 @memory_app.command("digest-pending")
 def memory_digest_pending() -> None:
     """Digest the chats queued at session ends, with one model start (~8 GB RAM while it runs, then freed)."""

@@ -297,3 +297,51 @@ def test_stop_asks_to_remember_after_enough_conversation(db, tmp_path, monkeypat
     assert out["decision"] == "block" and "remember(" in out["reason"]
     assert hook.hook("stop", data) is None                                   # nothing new since
     assert hook.hook("stop", {**data, "stop_hook_active": True}) is None
+
+
+def test_runs_are_linked_to_workflows_measured_and_rated(db, tmp_path):
+    from kb.memory import runs, workflows as wf
+
+    wfdir, out = tmp_path / "wf", tmp_path / "out" / "pika_D"
+    wfdir.mkdir()
+    out.mkdir(parents=True)
+    (wfdir / "D_video_full.json").write_text(json.dumps(
+        {"1": {"class_type": "KSampler", "inputs": {"steps": 30, "cfg": 1.0}}}))
+    (out / "D_video_full_curtsy.mp4").write_bytes(b"x")
+    (out / "D_video_full_curtsy.api.json").write_text(json.dumps(
+        {"1": {"class_type": "DPCacheApply", "inputs": {"threshold": 0.2}}}))
+    (out / "results.json").write_text(json.dumps({
+        "D_video_full_curtsy": {"exec_s": 350.2, "file": "D_video_full_curtsy.mp4", "size": "1920x1088",
+                                "frames": 124, "seed": 1245},
+        "D_video_full_balcony": {"error": "interrupted"},
+        "notes": "free text"}))
+    wf.scan(db, [wfdir])
+    assert runs.scan(db, [tmp_path / "out"]) == {"runs": 2, "changed": 2}
+    assert runs.scan(db, [tmp_path / "out"])["changed"] == 0
+    r = runs.of_workflow(db, str(wfdir / "D_video_full.json"))
+    assert {x["name"] for x in r} == {"D_video_full_curtsy", "D_video_full_balcony"}
+    runs.rate(db, "D_video_full_curtsy", 4, "лицо чуть плывёт")
+    runs.scan(db, [tmp_path / "out"])                                         # a rescan keeps the rating
+    best = runs.of_workflow(db, str(wfdir / "D_video_full.json"))[0]
+    assert best["rating"] == 4 and best["exec_s"] == 350.2 and best["output"].endswith(".mp4")
+    note = db.conn.execute("SELECT text FROM memories WHERE origin = 'run' AND text LIKE '%curtsy%'").fetchone()[0]
+    assert "350 s" in note and "4/5" in note and "DPCacheApply" in note
+    with pytest.raises(ValueError):
+        runs.rate(db, "nope", 3)
+    with pytest.raises(ValueError):
+        runs.rate(db, "D_video_full_curtsy", 9)
+
+
+def test_run_graphs_are_not_catalog_workflows(db, tmp_path):
+    from kb.memory import runs, workflows as wf
+
+    src, out = tmp_path / "pipeline", tmp_path / "out"
+    src.mkdir()
+    out.mkdir()
+    graph = json.dumps({"1": {"class_type": "KSampler", "inputs": {"steps": 6, "cfg": 1.0, "seed": 1}}})
+    (src / "B_pika_6step.json").write_text(graph)
+    (out / "B_pika_6step.api.json").write_text(graph)
+    (out / "results.json").write_text(json.dumps({"B_pika_6step": {"exec_s": 121.3, "file": "B.mp4"}}))
+    assert wf.scan(db, [tmp_path])["workflows"] == 1
+    runs.scan(db, [tmp_path])
+    assert runs.listing(db)[0]["workflow"] == str(src / "B_pika_6step.json")

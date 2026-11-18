@@ -41,7 +41,9 @@ def find(dirs: list[Path] | None = None) -> list[Path]:
     for root in dirs or roots():
         for d, sub, files in os.walk(root):
             sub[:] = [x for x in sub if x not in SKIP_DIRS and not x.startswith(".")]
-            out += [Path(d) / f for f in files if f.endswith(".json")]
+            run_dir = "results.json" in files   # its *.api.json are the graphs of recorded runs (see runs.py)
+            out += [Path(d) / f for f in files if f.endswith(".json") and f != "results.json"
+                    and not (run_dir and f.endswith(".api.json"))]
     return [p for p in out if _is_workflow(p)]
 
 
@@ -137,7 +139,10 @@ def scan(db: Database, dirs: list[Path] | None = None) -> dict[str, int]:
                             (topic(path), text, key, now, now, vec[0].tobytes() if vec is not None else None))
         db.conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", (f"memory_wf:{key}", mtime))
         changed += 1
-    known = {k: v for k, v in known.items() if not Path(k).exists()}   # a folder not scanned now keeps its notes
+    scanned = [r.resolve() for r in dirs or roots() if r.exists()]
+    # gone: deleted, or under a scanned root but no longer a workflow; files under other roots keep their notes
+    known = {k: v for k, v in known.items()
+             if not Path(k).exists() or any(Path(k).resolve().is_relative_to(r) for r in scanned)}
     for gone in known:
         db.conn.execute("DELETE FROM memories WHERE origin = 'workflow' AND ref = ?", (gone,))
         db.conn.execute("DELETE FROM meta WHERE key = ?", (f"memory_wf:{gone}",))
@@ -147,16 +152,26 @@ def scan(db: Database, dirs: list[Path] | None = None) -> dict[str, int]:
 
 
 def search(db: Database, goal: str, budget_tokens: int = 2000, rescan: bool = True) -> dict[str, Any]:
-    """Workflows that fit the goal, plus what chats and RESEARCH.md recorded about such runs."""
-    scanned = scan(db) if rescan else None
+    """Workflows that fit the goal with their measured runs (time, size, rating, result file), the runs that fit
+    it best, and what chats and RESEARCH.md recorded."""
+    from kb.memory import runs
+
+    scanned = {"catalog": scan(db), "runs": runs.scan(db)} if rescan else None
     store.sync_notebook(db)
-    found = store.recall(db, goal, budget_tokens=budget_tokens * 2 // 3, per_topic=1, origins=("workflow",))
-    known = store.recall(db, goal, budget_tokens=budget_tokens // 3, origins=("chat", "notebook", "agent"))
-    out: dict[str, Any] = {"goal": goal, "workflows": found["notes"], "recorded": known["notes"],
-                           "next": "Name the best fitting workflow with its path and folder; say what the recorded "
-                                   "notes report about it (speed, quality, problems); then propose concrete "
-                                   "compromises — which speed-up (cache, fewer steps, distill LoRA, lower "
-                                   "resolution then upscale) costs how much quality — and ask which way to go."}
+    found = store.recall(db, goal, budget_tokens=budget_tokens // 2, per_topic=1, origins=("workflow",))
+    for wf in found["notes"]:
+        measured = runs.of_workflow(db, wf["path"])
+        if measured:
+            wf["runs"] = measured
+    tried = store.recall(db, goal, budget_tokens=budget_tokens // 4, per_topic=1, origins=("run",))
+    known = store.recall(db, goal, budget_tokens=budget_tokens // 4, origins=("chat", "notebook", "agent"))
+    out: dict[str, Any] = {
+        "goal": goal, "workflows": found["notes"], "runs": tried["notes"], "recorded": known["notes"],
+        "next": "Name the best fitting workflow with its path and folder. Lead with measured runs (seconds, size, "
+                "frames, the user's rating, result file) over descriptions; then propose concrete compromises — which "
+                "speed-up (cache, fewer steps, distill LoRA, lower resolution then upscale) costs how much, with the "
+                "numbers the runs give — and ask which way to go. When the user judges a result, save it with "
+                "rate_run(run, rating 1-5, comment)."}
     if scanned:
-        out["catalog"] = scanned
+        out["scanned"] = scanned
     return out

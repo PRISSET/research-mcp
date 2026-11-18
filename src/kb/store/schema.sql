@@ -211,3 +211,25 @@ CREATE TRIGGER IF NOT EXISTS memories_au AFTER UPDATE OF text, topic ON memories
     INSERT INTO memories_fts(memories_fts, rowid, text, topic) VALUES ('delete', old.id, old.text, old.topic);
     INSERT INTO memories_fts(rowid, text, topic) VALUES (new.id, new.text, new.topic);
 END;
+
+-- Workflow runs found on disk (results.json of the user's run scripts: time, size, frames, seed, output file),
+-- linked to the catalog workflow they came from, with the user's rating.
+CREATE TABLE IF NOT EXISTS runs (
+    id        INTEGER PRIMARY KEY,
+    key       TEXT NOT NULL UNIQUE,      -- results.json path + entry name
+    name      TEXT NOT NULL,
+    folder    TEXT NOT NULL,
+    output    TEXT,                      -- result file, when it still exists
+    graph     TEXT,                      -- the API graph that ran (<name>.api.json), when saved
+    workflow  TEXT,                      -- catalog workflow it matches, by file name
+    exec_s    REAL,
+    size      TEXT,
+    frames    INTEGER,
+    seed      INTEGER,
+    error     TEXT,
+    settings  TEXT,                      -- described from the graph
+    rating    INTEGER,                   -- 1..5, the user's
+    comment   TEXT,
+    ran_at    TEXT,
+    seen      TEXT NOT NULL
+);
