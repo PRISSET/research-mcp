@@ -135,6 +135,53 @@ def digest(transcript: Path, session: str, project: str | None = None) -> dict[s
     return {"session": session, "notes": added + updated, "added": added, "updated": updated}
 
 
+def _queue() -> Path:
+    return llm.home() / "queue.jsonl"
+
+
+def enqueue(transcript: str, session: str, project: str = "") -> None:
+    """Remember that this chat has new text to digest (cheap: one line appended, no model, no database)."""
+    llm.home().mkdir(parents=True, exist_ok=True)
+    with open(_queue(), "a", encoding="utf-8") as fh:
+        fh.write(json.dumps({"transcript": transcript, "session": session, "project": project}) + "\n")
+
+
+def pending() -> list[dict[str, str]]:
+    """Queued chats, one entry per session (the latest), whose transcript still exists."""
+    try:
+        lines = _queue().read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    by_session: dict[str, dict[str, str]] = {}
+    for line in lines:
+        try:
+            e = json.loads(line)
+            by_session[e["session"]] = e
+        except (ValueError, KeyError, TypeError):
+            continue
+    return [e for e in by_session.values() if Path(e["transcript"]).exists()]
+
+
+def digest_pending() -> list[dict[str, Any]]:
+    """Digest every queued chat with one model start; a chat that fails stays queued."""
+    llm.background()
+    llm.home().mkdir(parents=True, exist_ok=True)
+    with open(llm.home() / "digest.lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        todo, done, out = pending(), set(), []
+        if todo:
+            with llm.running():
+                for e in todo:
+                    try:
+                        out.append(digest(Path(e["transcript"]), e["session"], e["project"] or None))
+                        done.add(e["session"])
+                    except (llm.Unavailable, BadAnswer, OSError) as err:
+                        out.append({"session": e["session"], "error": str(err)})
+        left = [e for e in pending() if e["session"] not in done]
+        _queue().write_text("".join(json.dumps(e) + "\n" for e in left), encoding="utf-8")
+    return out
+
+
 def main(argv: list[str]) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
     transcript, session, project = Path(argv[0]), argv[1], (argv[2] if len(argv) > 2 else None)

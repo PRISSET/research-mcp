@@ -225,6 +225,20 @@ def memory_recall(query: str, topic: str = typer.Option(None), budget: int = 120
             console.print(f"[bold]#{n['id']} {n['topic']}[/] ({n['origin']}, {n['updated']})\n{n['text']}\n")
 
 
+@memory_app.command("digest-pending")
+def memory_digest_pending() -> None:
+    """Digest the chats queued at session ends, with one model start (~8 GB RAM while it runs, then freed)."""
+    from kb.memory import digest
+
+    n = len(digest.pending())
+    if not n:
+        console.print("queue is empty")
+        return
+    console.print(f"{n} chats queued: digesting")
+    for r in digest.digest_pending():
+        console.print(r)
+
+
 @memory_app.command("digest")
 def memory_digest(transcript: Path, session: str = typer.Option(None), project: str = typer.Option(None)) -> None:
     """Digest one Claude Code chat (~/.claude/projects/<dir>/<session>.jsonl) into notes now."""

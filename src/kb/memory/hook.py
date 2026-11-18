@@ -4,7 +4,6 @@ and a background digest of the chat by the local model before compaction and at 
 from __future__ import annotations
 
 import json
-import subprocess
 import sys
 from typing import Any
 
@@ -45,15 +44,12 @@ def context() -> str | None:
 
 
 def start_digest(data: dict[str, Any]) -> None:
-    from kb.memory import llm
+    """Only put the chat in the queue: the model (~8 GB of RAM, all its threads busy) never starts on its own
+    when a session ends; `kb memory digest-pending` runs the queue when the user chooses."""
+    from kb.memory import digest
 
-    transcript, session = data.get("transcript_path"), data.get("session_id")
-    if not transcript or not session:
-        return
-    llm.home().mkdir(parents=True, exist_ok=True)
-    with open(llm.home() / "digest.log", "ab") as logf:
-        subprocess.Popen([sys.executable, "-m", "kb.memory.digest", transcript, session, data.get("cwd") or ""],
-                         stdout=logf, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
+    if data.get("transcript_path") and data.get("session_id"):
+        digest.enqueue(data["transcript_path"], data["session_id"], data.get("cwd") or "")
 
 
 def hook(event: str, data: dict[str, Any]) -> dict[str, Any] | None:

@@ -113,6 +113,16 @@ def _healthy() -> bool:
         return False
 
 
+def _die_with_parent() -> None:
+    """Linux: the server gets SIGTERM when the process that started it dies, so it never lingers holding RAM."""
+    try:
+        import ctypes
+
+        ctypes.CDLL("libc.so.6").prctl(1, 15)   # PR_SET_PDEATHSIG, SIGTERM
+    except (OSError, AttributeError):
+        pass
+
+
 @contextmanager
 def running() -> Iterator[None]:
     """A llama-server for the duration of the block; an already running one is used and left running."""
@@ -128,7 +138,8 @@ def running() -> Iterator[None]:
     wait_for_memory()
     home().mkdir(parents=True, exist_ok=True)
     with open(home() / "llama-server.log", "ab") as logf:
-        proc = subprocess.Popen(cmd, stdout=logf, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL)
+        proc = subprocess.Popen(cmd, stdout=logf, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+                                preexec_fn=_die_with_parent)
     try:
         deadline = time.monotonic() + START_WAIT
         while not _healthy():

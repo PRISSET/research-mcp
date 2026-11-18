@@ -188,14 +188,32 @@ def test_session_start_lists_topics(db):
     assert "LoRA (1)" in ctx and "recall(" in ctx
 
 
-def test_end_starts_a_background_digest(db, monkeypatch):
+def test_end_only_queues_the_chat(db, tmp_path, monkeypatch):
     started = []
-    monkeypatch.setattr(hook.subprocess, "Popen", lambda cmd, **kw: started.append((cmd, kw)))
-    hook.hook("end", {"transcript_path": "/t.jsonl", "session_id": "s1", "cwd": "/p"})
+    monkeypatch.setattr(llm, "running", lambda: started.append(1))
+    t = tmp_path / "t.jsonl"
+    t.write_text("")
+    hook.hook("end", {"transcript_path": str(t), "session_id": "s1", "cwd": "/p"})
+    hook.hook("end", {"transcript_path": str(t), "session_id": "s1", "cwd": "/p"})
+    hook.hook("end", {"transcript_path": "/gone.jsonl", "session_id": "s2"})
     hook.hook("end", {})
-    (cmd, kw), = started
-    assert cmd[-4:] == ["kb.memory.digest", "/t.jsonl", "s1", "/p"] and kw["start_new_session"]
+    assert not started and digest.pending() == [{"transcript": str(t), "session": "s1", "project": "/p"}]
 
+
+def test_queue_is_digested_with_one_model_start(db, tmp_path, monkeypatch):
+    starts = []
+    monkeypatch.setattr(llm, "running", lambda: (starts.append(1), nullcontext())[1])
+    monkeypatch.setattr(llm, "background", lambda: None)
+    ok, bad = tmp_path / "ok.jsonl", tmp_path / "bad.jsonl"
+    for p in (ok, bad):
+        p.write_text("")
+    digest.enqueue(str(ok), "ok")
+    digest.enqueue(str(bad), "bad")
+    monkeypatch.setattr(digest, "digest", lambda path, session, project: (
+        {"session": session} if session == "ok" else (_ for _ in ()).throw(llm.Unavailable("x"))))
+    out = digest.digest_pending()
+    assert starts == [1] and out[0] == {"session": "ok"} and "error" in out[1]
+    assert [e["session"] for e in digest.pending()] == ["bad"]          # the failed one stays queued
 
 def test_hooks_install_next_to_the_guard(tmp_path, monkeypatch):
     from kb import guard
