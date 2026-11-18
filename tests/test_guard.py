@@ -39,7 +39,7 @@ def test_ledger_items_close_with_where_or_why(repo):
 def test_hooks_show_ledger_and_stop_refuses_once(repo):
     guard.update(str(repo), add=[{"kind": "requirement", "text": "batch the requests"}])
     ctx = guard.hook("prompt", {"cwd": str(repo)})["hookSpecificOutput"]["additionalContext"]
-    assert "OPEN #1 requirement: batch the requests" in ctx
+    assert "#1 requirement: batch the requests" in ctx
     stop = guard.hook("stop", {"cwd": str(repo)})
     assert stop["decision"] == "block" and "batch the requests" in stop["reason"]
     assert guard.hook("stop", {"cwd": str(repo), "stop_hook_active": True}) is None   # no loop

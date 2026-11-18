@@ -41,13 +41,11 @@ def context() -> str | None:
     from kb.store import Database
 
     with Database() as db:
-        ts = store.topics(db, limit=30)
+        ts = store.topics(db, limit=15)
     if not ts:
         return None
     listed = "; ".join(f"{t['topic']} ({t['notes']})" for t in ts)
-    return ("Memory from earlier chats and RESEARCH.md, by topic (notes): " + listed + ". When the task touches "
-            "one, call recall(query) for the notes instead of reading RESEARCH.md; save a lasting fact with "
-            "remember(topic, text). The user's ComfyUI workflows on disk: workflows(goal).")
+    return f"Memory topics (recall(query) gives the notes): {listed}."
 
 
 def start_digest(data: dict[str, Any]) -> None:

@@ -1,49 +1,18 @@
 ## Research MCP (`research`)
-- Your knowledge of models, libraries and tools is out of date. Before choosing, recommending, installing or
-  configuring one, check it with the `research` MCP: `latest_models` for what is new for the task (say each
-  model's release date), `research_sweep` / `hf_search` / `github_search`, and `check_versions` for what the project
-  already uses. Do not assume something does not exist because you do not know it.
-- Before telling the user which weights to download: `model_variants` with their GPU. Do not default to bf16 when it
-  does not fit or barely fits — offer FP8 / INT8 first (near-lossless, half the memory), state the quality cost.
-- Before promising that a model runs or trains on the user's hardware: `estimate_resources` (VRAM, fits, speed,
-  training hours); between models: `model_variants(compare_with=[…])`; before using a dataset: `dataset_info`; for a
-  paper's code: `source_info(code=true)`.
-- When a command, install, build or run fails, call `diagnose_error` with the exact error text (plus library and
-  version) before trying fixes by guessing.
-- Before recommending training settings (learning rate, rank / alpha, steps, batch, optimizer): `recipes(model=…)`
-  — what published weights of that family were trained with — and give concrete values scaled to the user's
-  dataset, not "it depends". Trainer docs and issues come with the knowledge packs (`uv run kb pack install
-  lora-training` / `llm-finetune`), found by `search_fulltext`.
-- For research or planning requests, first call `research_brief` and ask the user what it reports missing (until it
-  is ready); for "find a better way to …" use `find_methods` with several phrasings and the baseline to beat, and
-  answer with the strongest options and their measured gains, not a long list. Use several platforms (papers,
-  GitHub, Hugging Face, forums, web — plus your own web search), read the sources with `fetch` and record findings in
-  RESEARCH.md with the `notebook_*` tools; `notebook_read(section, refresh=true)` on sections older than a month
-  before relying on them.
-- Be a specialist, not a search box. For practical work in a field (an annotation schema, a dataset, training,
-  evaluation, a pipeline) learn the field before advising: `study_topic(topic, terms=[key concepts], section=…)`,
-  read the sources it returns, record concepts / decisions / practices / pitfalls with
-  `notebook_write(section, knowledge=[…])` and repeat until it reports `expert_ready`. Then explain the concepts that
-  matter and what they change, raise the decisions the user has not made, propose the whole pipeline step by step
-  with the source behind each step, and check the user's plan or schema with `review_plan`.
-- Remember what was tried: when the user reports how something went, log it with
-  `notebook_write(section, experiment={change, settings, result, verdict})`; read the topic's experiments before
-  suggesting and do not re-propose what already failed. Your own web search is the main web search (Reddit,
-  blogs); if a result says an optional key would help, tell the user once (`uv run kb keys`).
-- Save your context: a job that means reading many pages, issues or large files (how a library configures X, what
-  the issues say about an error, where in a big repo Y is handled) goes to `delegate(task=…, context=…, project=…)`
-  — a Gemini subagent (your web login) reads with the research tools and returns only the facts with their sources; check
-  the sources it lists before a claim decides something.
-- Memory between chats: before re-asking the user or reading RESEARCH.md sections in full, `recall(query)` — the
-  notes earlier chats (digested by a local model) and RESEARCH.md left, by topic, within a token budget. Save a
-  lasting fact (a preference, a decision and why, a setting that worked) with `remember(topic, text)`; `forget(ids)`
-  what turned out wrong.
-- The user's ComfyUI workflows: `workflows(goal)` finds them on disk by what they should achieve (path, folder,
-  models, steps / CFG, speed-up nodes, their notes) with what was recorded about such runs; name the file and
-  folder and propose speed / quality compromises from the recorded results.
-- Ignore licenses: do not open LICENSE files or license sections, do not check, compare or mention licenses or
-  commercial-use terms unless the user asks about them.
-- When writing code: record each requirement, optimization, constraint or fact the user gives with `task_ledger`
-  (project = your working directory) as it comes; read the neighbouring code first and reuse its helpers and
-  style; after each step call `review_code` and fix what applies; before finishing, mark every open ledger item
-  done (where) or deferred (why) and list them in the answer.
+- Your knowledge of models, libraries and tools is stale: before choosing, recommending or installing one, check it
+  with the `research` MCP (`latest_models` with release dates, `hf_search`, `github_search`, `check_versions`).
+  Weights for the user's GPU: `model_variants` (FP8 / INT8 before 4-bit, state the quality cost); will it fit / how
+  fast: `estimate_resources`; training settings: `recipes(model=…)` with concrete values; a failed command:
+  `diagnose_error` with the exact error first.
+- Memory: `recall(query)` before re-asking the user or reading RESEARCH.md sections in full; `remember(topic,
+  text)` for lasting facts (preference, decision and why, what worked or failed, where something is).
+- The user's ComfyUI workflows and their measured runs: `workflows(goal)` — name the file and folder, lead with
+  the run numbers and ratings, propose speed / quality compromises; save their verdict with `rate_run`.
+- Research / planning: `research_brief` first and ask what it reports missing; practical work in a field:
+  `study_topic` until `expert_ready`, then `review_plan`; log tries with `notebook_write(experiment=…)` and do not
+  re-propose what failed.
+- Reading-heavy jobs (many pages, issues, big files) go to `delegate(task=…, project=…)`: a Gemini subagent
+  returns only facts with sources; check the sources before a claim decides something.
+- Ignore licenses unless the user asks.
+- Coding: record the user's requirements / constraints with `task_ledger`, reuse neighbouring helpers,
+  `review_code` after each step, close every ledger item (done where / deferred why) and list them in the answer.

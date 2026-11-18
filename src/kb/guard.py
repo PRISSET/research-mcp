@@ -192,8 +192,12 @@ def _context(led: dict[str, Any], full: bool) -> str:
 def hook(event: str, data: dict[str, Any]) -> dict[str, Any] | None:
     root = project_root(data.get("cwd"))
     led = load(root)
-    if event == "prompt":
-        return {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": _context(led, False)}}
+    if event == "prompt":   # every message: only what is still open (standing items come at session start)
+        op = open_items(led)
+        if not op:
+            return None
+        text = "Open task-ledger items: " + "; ".join(_line(i) for i in op)
+        return {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": text}}
     if event == "session":
         if not led["items"]:
             return None
